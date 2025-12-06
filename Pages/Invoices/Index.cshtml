@@ -1,0 +1,123 @@
+@page
+@model Verifactu.Portal.Pages.Invoices.IndexModel
+@{
+    ViewData["Title"] = "Facturas";
+}
+
+<h1 class="mb-4">Facturas</h1>
+
+<form method="get" class="row g-3 align-items-end mb-4">
+    <div class="col-sm-3">
+        <label asp-for="Nif" class="form-label">NIF destinatario/Emisor</label>
+        <input asp-for="Nif" class="form-control" />
+    </div>
+    <div class="col-sm-3">
+        <label asp-for="Emisor" class="form-label">Emisor</label>
+        <input asp-for="Emisor" class="form-control" />
+    </div>
+    <div class="col-sm-3">
+        <label asp-for="NumeroSerie" class="form-label">Número de serie</label>
+        <input asp-for="NumeroSerie" class="form-control" />
+    </div>
+    <div class="col-sm-2">
+        <label asp-for="Estado" class="form-label">Estado documental</label>
+        <input asp-for="Estado" class="form-control" />
+    </div>
+    <div class="col-sm-2">
+        <label class="form-label" for="fecha-desde">Fecha desde</label>
+        <input id="fecha-desde" name="FechaDesde" value="@(Model.FechaDesde?.ToString("yyyy-MM-dd"))" type="date" class="form-control" />
+    </div>
+    <div class="col-sm-2">
+        <label class="form-label" for="fecha-hasta">Fecha hasta</label>
+        <input id="fecha-hasta" name="FechaHasta" value="@(Model.FechaHasta?.ToString("yyyy-MM-dd"))" type="date" class="form-control" />
+    </div>
+    <div class="col-sm-2">
+        <label asp-for="PageSize" class="form-label">Resultados</label>
+        <input asp-for="PageSize" class="form-control" type="number" min="1" />
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Buscar</button>
+        <a asp-page="./Index" class="btn btn-outline-secondary">Limpiar</a>
+    </div>
+</form>
+
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+else if (Model.Result.Items.Count == 0)
+{
+    <div class="alert alert-info">No se encontraron facturas con los criterios indicados.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>FacturaId</th>
+                    <th>IdempotencyKey</th>
+                    <th>Serie</th>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Estado documental</th>
+                    <th>Estado AEAT</th>
+                    <th>Actualización</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var invoice in Model.Result.Items)
+            {
+                <tr>
+                    <td class="text-break">@invoice.FacturaId</td>
+                    <td class="text-break">@(string.IsNullOrWhiteSpace(invoice.IdempotencyKey) ? "-" : invoice.IdempotencyKey)</td>
+                    <td>@invoice.NumeroSerie</td>
+                    <td>@(invoice.FechaExpedicion?.ToString("yyyy-MM-dd") ?? "-")</td>
+                    <td>@(invoice.TipoOperacion ?? "-")</td>
+                    <td>@(invoice.EstadoDocumental ?? "-")</td>
+                    <td>
+                        @(invoice.EstadoRegistroAeat ?? "-")
+                        @if (invoice.CodigoAeat is not null)
+                        {
+                            <span class="text-muted">(@invoice.CodigoAeat)</span>
+                        }
+                    </td>
+                    <td>@(invoice.UltimaActualizacion?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-primary"
+                           asp-page="./Details"
+                           asp-route-facturaId="@invoice.FacturaId"
+                           asp-route-idempotencyKey="@invoice.IdempotencyKey">
+                            Ver detalles
+                        </a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-3">
+        <div class="text-muted">
+            Mostrando @Model.Result.Items.Count facturas.
+        </div>
+        <div>
+            @if (Model.HasNextPage)
+            {
+                <a class="btn btn-outline-primary"
+                   asp-page="./Index"
+                   asp-route-Emisor="@Model.Emisor"
+                   asp-route-Nif="@Model.Nif"
+                   asp-route-NumeroSerie="@Model.NumeroSerie"
+                   asp-route-Estado="@Model.Estado"
+                   asp-route-FechaDesde="@(Model.FechaDesde?.ToString("yyyy-MM-dd"))"
+                   asp-route-FechaHasta="@(Model.FechaHasta?.ToString("yyyy-MM-dd"))"
+                   asp-route-PageSize="@Model.PageSize"
+                   asp-route-ContinuationToken="@Model.Result.ContinuationToken">
+                    Siguiente página
+                </a>
+            }
+        </div>
+    </div>
+}

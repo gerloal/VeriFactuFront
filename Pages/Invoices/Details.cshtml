@@ -1,0 +1,254 @@
+@page
+@using System
+@using System.Collections.Generic
+@using System.Linq
+@using Verifactu.Portal.Models
+@model Verifactu.Portal.Pages.Invoices.DetailsModel
+@{
+    ViewData["Title"] = "Detalle de factura";
+}
+
+<a asp-page="./Index" class="btn btn-link ps-0">&larr; Volver al listado</a>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-info">@Model.StatusMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+else if (Model.Invoice is null)
+{
+    <div class="alert alert-warning">No se pudo cargar la factura solicitada.</div>
+}
+else
+{
+    var invoice = Model.Invoice;
+    <div class="card mb-4">
+        <div class="card-header">
+            <strong>Factura</strong>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">FacturaId</dt>
+                <dd class="col-sm-9 text-break">@invoice.FacturaId</dd>
+
+                <dt class="col-sm-3">IdempotencyKey</dt>
+                <dd class="col-sm-9 text-break">@(string.IsNullOrWhiteSpace(invoice.IdempotencyKey) ? "-" : invoice.IdempotencyKey)</dd>
+
+                <dt class="col-sm-3">Emisor</dt>
+                <dd class="col-sm-9">@(string.IsNullOrWhiteSpace(invoice.EmisorNombre) ? "-" : invoice.EmisorNombre) (@(invoice.EmisorNif ?? "-"))</dd>
+
+                <dt class="col-sm-3">Serie</dt>
+                <dd class="col-sm-9">@(invoice.NumeroSerie ?? "-")</dd>
+
+                <dt class="col-sm-3">Fecha expedición</dt>
+                <dd class="col-sm-9">@(invoice.FechaExpedicion?.ToString("yyyy-MM-dd") ?? "-")</dd>
+
+                <dt class="col-sm-3">Tipo operación</dt>
+                <dd class="col-sm-9">@(invoice.TipoOperacion ?? "-")</dd>
+
+                <dt class="col-sm-3">Estado documental</dt>
+                <dd class="col-sm-9">@(invoice.EstadoDocumental ?? "-")</dd>
+
+                <dt class="col-sm-3">Estado AEAT</dt>
+                <dd class="col-sm-9">
+                    @(invoice.EstadoRegistroAeat ?? "-")
+                    @if (invoice.CodigoAeat is not null)
+                    {
+                        <span class="text-muted">(@invoice.CodigoAeat)</span>
+                    }
+                </dd>
+
+                <dt class="col-sm-3">Referencia AEAT</dt>
+                <dd class="col-sm-9">@(invoice.AeatReferencia ?? "-")</dd>
+
+                <dt class="col-sm-3">Mensaje AEAT</dt>
+                <dd class="col-sm-9">@(invoice.MensajeAeat ?? "-")</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <strong>Idempotencia</strong>
+                </div>
+                <div class="card-body">
+                    if (invoice.Idempotency is null)
+                    {
+                        <p class="text-muted mb-0">Sin información de idempotencia.</p>
+                    }
+                    else
+                    {
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">Estado</dt>
+                            <dd class="col-sm-7">@(invoice.Idempotency.Estado ?? "-")</dd>
+
+                            <dt class="col-sm-5">Estado documento</dt>
+                            <dd class="col-sm-7">@(invoice.Idempotency.EstadoDocumento ?? "-")</dd>
+
+                            <dt class="col-sm-5">Hash petición</dt>
+                            <dd class="col-sm-7 text-break">@(invoice.Idempotency.RequestHash ?? "-")</dd>
+
+                            <dt class="col-sm-5">Creado</dt>
+                            <dd class="col-sm-7">@(invoice.Idempotency.CreadoEn?.ToString("u") ?? "-")</dd>
+
+                            <dt class="col-sm-5">Completado</dt>
+                            <dd class="col-sm-7">@(invoice.Idempotency.CompletadoEn?.ToString("u") ?? "-")</dd>
+
+                            <dt class="col-sm-5">Cancelado</dt>
+                            <dd class="col-sm-7">@(invoice.Idempotency.CanceladoEn?.ToString("u") ?? "-")</dd>
+
+                            <dt class="col-sm-5">Última actualización</dt>
+                            <dd class="col-sm-7">@(invoice.Idempotency.UltimaActualizacion?.ToString("u") ?? "-")</dd>
+
+                            <dt class="col-sm-5">Incorrecto</dt>
+                            <dd class="col-sm-7">@(invoice.Idempotency.IncorrectoEn?.ToString("u") ?? "-")</dd>
+
+                            <dt class="col-sm-5">Error</dt>
+                            <dd class="col-sm-7 text-break">@(invoice.Idempotency.Error ?? "-")</dd>
+                        </dl>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <strong>Ledger</strong>
+                </div>
+                <div class="card-body">
+                    @if (invoice.Ledger is null)
+                    {
+                        <p class="text-muted mb-0">Sin información en el ledger.</p>
+                    }
+                    else
+                    {
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">Hash actual</dt>
+                            <dd class="col-sm-7 text-break">@(invoice.Ledger.Hash ?? "-")</dd>
+
+                            <dt class="col-sm-5">Hash anterior</dt>
+                            <dd class="col-sm-7 text-break">@(invoice.Ledger.HashAnterior ?? "-")</dd>
+
+                            <dt class="col-sm-5">Estado registro</dt>
+                            <dd class="col-sm-7">@(invoice.Ledger.EstadoRegistro ?? "-")</dd>
+
+                            <dt class="col-sm-5">Estado registro TS</dt>
+                            <dd class="col-sm-7">@(invoice.Ledger.EstadoRegistroTimestamp?.ToString("u") ?? "-")</dd>
+
+                            <dt class="col-sm-5">Cancelación TS</dt>
+                            <dd class="col-sm-7">@(invoice.Ledger.CancelTimestamp?.ToString("u") ?? "-")</dd>
+
+                            <dt class="col-sm-5">Código error</dt>
+                            <dd class="col-sm-7">@(invoice.Ledger.CodigoError ?? "-")</dd>
+
+                            <dt class="col-sm-5">Descripción error</dt>
+                            <dd class="col-sm-7 text-break">@(invoice.Ledger.DescripcionError ?? "-")</dd>
+                        </dl>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card my-4">
+        <div class="card-header">
+            <strong>Timeline</strong>
+        </div>
+        <div class="card-body">
+            @{ var timeline = invoice.Timeline ?? new List<InvoiceTimelineEventDto>(); }
+            @if (timeline.Count == 0)
+            {
+                <p class="text-muted mb-0">Sin eventos registrados.</p>
+            }
+            else
+            {
+                <ul class="list-group list-group-flush">
+                    @foreach (var evt in timeline.OrderBy(e => e.OcurrioEn))
+                    {
+                        <li class="list-group-item">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <strong>@(string.IsNullOrWhiteSpace(evt.Tipo) ? "-" : evt.Tipo)</strong> - @(evt.Descripcion ?? "-")
+                                    @if (!string.IsNullOrWhiteSpace(evt.DatosExtra))
+                                    {
+                                        <span class="text-muted">(@evt.DatosExtra)</span>
+                                    }
+                                </div>
+                                <small class="text-muted">@evt.OcurrioEn.ToString("u")</small>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Documentos disponibles</strong>
+            <small class="text-muted">Se incluye idempotencyKey en cada solicitud</small>
+        </div>
+        <div class="card-body">
+            @{
+                var documentEntries = invoice.Documentos is null
+                    ? Array.Empty<(string Label, string Type, string? Key)>()
+                    : new (string Label, string Type, string? Key)[]
+                    {
+                        ("XML pre-firma", "prefirma", invoice.Documentos.PrefirmaKey),
+                        ("XML firmado", "firmada", invoice.Documentos.FirmadaKey),
+                        ("Solicitud AEAT", "aeat-request", invoice.Documentos.AeatRequestKey),
+                        ("Respuesta AEAT", "aeat-response", invoice.Documentos.AeatResponseKey),
+                        ("Resumen AEAT", "aeat-summary", invoice.Documentos.AeatSummaryKey)
+                    };
+            }
+
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Documento</th>
+                            <th>Estado</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (documentEntries.Length == 0)
+                        {
+                            <tr>
+                                <td colspan="3" class="text-muted">Sin información de documentos.</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var doc in documentEntries)
+                            {
+                                <tr>
+                                    <td>@doc.Label</td>
+                                    <td>@(string.IsNullOrWhiteSpace(doc.Key) ? "No disponible" : "Disponible")</td>
+                                    <td class="text-end">
+                                        @if (!string.IsNullOrWhiteSpace(doc.Key))
+                                        {
+                                            <a class="btn btn-sm btn-outline-primary"
+                                               asp-page-handler="Download"
+                                               asp-route-facturaId="@invoice.FacturaId"
+                                               asp-route-idempotencyKey="@invoice.IdempotencyKey"
+                                               asp-route-documentType="@doc.Type">
+                                                Descargar
+                                            </a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}

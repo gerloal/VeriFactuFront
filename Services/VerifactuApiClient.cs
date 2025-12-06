@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Verifactu.Portal.Models;
 using Verifactu.Portal.Options;
@@ -175,6 +177,129 @@ public sealed class VerifactuApiClient
             PageSize = pageSize,
             TotalCount = totalCount
         };
+    }
+
+    public async Task<InvoiceListResponseDto> GetInvoicesAsync(
+        string? numeroSerie,
+        string? emisor,
+        string? nif,
+        string? estado,
+        DateTime? fechaDesde,
+        DateTime? fechaHasta,
+        int? pageSize,
+        string? continuationToken)
+    {
+        await PrepareClientAsync();
+
+        var query = new Dictionary<string, string?>();
+
+        if (!string.IsNullOrWhiteSpace(numeroSerie))
+        {
+            query["numeroSerie"] = numeroSerie;
+        }
+
+        if (!string.IsNullOrWhiteSpace(emisor))
+        {
+            query["emisor"] = emisor;
+        }
+
+        if (!string.IsNullOrWhiteSpace(nif))
+        {
+            query["nif"] = nif;
+        }
+
+        if (!string.IsNullOrWhiteSpace(estado))
+        {
+            query["estado"] = estado;
+        }
+
+        if (fechaDesde.HasValue)
+        {
+            query["fechaDesde"] = fechaDesde.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        if (fechaHasta.HasValue)
+        {
+            query["fechaHasta"] = fechaHasta.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        if (pageSize.HasValue && pageSize.Value > 0)
+        {
+            query["pageSize"] = pageSize.Value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (!string.IsNullOrWhiteSpace(continuationToken))
+        {
+            query["continuationToken"] = continuationToken;
+        }
+
+        var endpoint = query.Count > 0
+            ? QueryHelpers.AddQueryString("facturas", query!)
+            : "facturas";
+
+        using var response = await _httpClient.GetAsync(endpoint).ConfigureAwait(false);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return new InvoiceListResponseDto();
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<InvoiceListResponseDto>(SerializerOptions).ConfigureAwait(false)
+               ?? new InvoiceListResponseDto();
+    }
+
+    public async Task<InvoiceDetailDto?> GetInvoiceDetailAsync(string facturaId, string? idempotencyKey)
+    {
+        await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(facturaId))
+        {
+            return null;
+        }
+
+        var path = $"facturas/{Uri.EscapeDataString(facturaId)}";
+
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            path = QueryHelpers.AddQueryString(path, "idempotencyKey", idempotencyKey);
+        }
+
+        using var response = await _httpClient.GetAsync(path).ConfigureAwait(false);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<InvoiceDetailDto>(SerializerOptions).ConfigureAwait(false);
+    }
+
+    public async Task<InvoiceDocumentResponseDto?> GetInvoiceDocumentAsync(string facturaId, string documentType, string? idempotencyKey)
+    {
+        await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(facturaId) || string.IsNullOrWhiteSpace(documentType))
+        {
+            return null;
+        }
+
+        var normalizedType = documentType.Trim().ToLowerInvariant();
+        var path = $"facturas/{Uri.EscapeDataString(facturaId)}/documentos/{normalizedType}";
+
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            path = QueryHelpers.AddQueryString(path, "idempotencyKey", idempotencyKey);
+        }
+
+        using var response = await _httpClient.GetAsync(path).ConfigureAwait(false);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<InvoiceDocumentResponseDto>(SerializerOptions).ConfigureAwait(false);
     }
 
     public async Task<IList<ApiKeyDto>> GetApiKeysAsync()
