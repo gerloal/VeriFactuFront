@@ -1,0 +1,13 @@
+@if (User?.Identity?.IsAuthenticated ?? false)
+{
+	<div class="d-flex align-items-center gap-2">
+		<span class="text-white">@User.Identity?.Name</span>
+		<form method="post" asp-page="/Account/Logout" class="mb-0">
+			<button type="submit" class="btn btn-outline-light btn-sm">Cerrar sesión</button>
+		</form>
+	</div>
+}
+else
+{
+	<a class="btn btn-outline-light btn-sm" asp-page="/Account/Login">Iniciar sesión</a>
+}

@@ -1,0 +1,79 @@
+@page
+@model Verifactu.Portal.Pages.Batches.IndexModel
+
+<h1 class="mb-4">Lotes</h1>
+
+<form method="get" class="row g-3 mb-4">
+    <div class="col-md-3">
+        <label asp-for="From" class="form-label">Fecha desde</label>
+        <input asp-for="From" class="form-control" type="date" />
+    </div>
+    <div class="col-md-3">
+        <label asp-for="To" class="form-label">Fecha hasta</label>
+        <input asp-for="To" class="form-control" type="date" />
+    </div>
+    <div class="col-md-3">
+        <label asp-for="Status" class="form-label">Estado</label>
+        <select asp-for="Status" class="form-select">
+            <option value="">Todos</option>
+            <option value="Pending">Pendiente</option>
+            <option value="Processing">Procesando</option>
+            <option value="Completed">Completado</option>
+            <option value="Failed">Fallido</option>
+        </select>
+    </div>
+    <div class="col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary">Filtrar</button>
+    </div>
+</form>
+
+@if (Model.PagedBatches?.Items?.Any() == true)
+{
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th scope="col">Identificador</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Creado</th>
+                    <th scope="col">Facturas totales</th>
+                    <th scope="col">Pendientes</th>
+                    <th scope="col">Archivo</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var batch in Model.PagedBatches.Items)
+            {
+                <tr>
+                    <td>@batch.Id</td>
+                    <td>@batch.Status</td>
+                    <td>@batch.CreatedAt.ToLocalTime().ToString("g")</td>
+                    <td>@batch.TotalItems</td>
+                    <td>@batch.PendingItems</td>
+                    <td>@(string.IsNullOrWhiteSpace(batch.FileName) ? "-" : batch.FileName)</td>
+                    <td>
+                        <a asp-page="Details" asp-route-batchId="@batch.Id" class="btn btn-outline-primary btn-sm">Detalles</a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <nav aria-label="Paginación">
+        <ul class="pagination">
+            <li class="page-item @(Model.HasPreviousPage ? string.Empty : "disabled")">
+                <a class="page-link" asp-page="Index" asp-route-pageNumber="@(Model.PageNumber - 1)" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")" asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-Status="@Model.Status">Anterior</a>
+            </li>
+            <li class="page-item disabled"><span class="page-link">Página @Model.PageNumber de @Model.TotalPages</span></li>
+            <li class="page-item @(Model.HasNextPage ? string.Empty : "disabled")">
+                <a class="page-link" asp-page="Index" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")" asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-Status="@Model.Status">Siguiente</a>
+            </li>
+        </ul>
+    </nav>
+}
+else
+{
+    <div class="alert alert-info">No se encontraron lotes con los filtros seleccionados.</div>
+}

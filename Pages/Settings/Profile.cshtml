@@ -1,0 +1,39 @@
+@page
+@model Verifactu.Portal.Pages.Settings.ProfileModel
+
+<h1 class="mb-4">Perfil de la organización</h1>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success">@Model.StatusMessage</div>
+}
+
+<form method="post" class="row g-3">
+    <div class="col-md-6">
+        <label asp-for="EditableProfile.TenantId" class="form-label">Tenant</label>
+        <input asp-for="EditableProfile.TenantId" class="form-control" readonly />
+    </div>
+    <div class="col-md-6">
+        <label asp-for="EditableProfile.Email" class="form-label">Correo electrónico</label>
+        <input asp-for="EditableProfile.Email" class="form-control" />
+        <span asp-validation-for="EditableProfile.Email" class="text-danger"></span>
+    </div>
+    <div class="col-md-6">
+        <label asp-for="EditableProfile.CompanyName" class="form-label">Razón social</label>
+        <input asp-for="EditableProfile.CompanyName" class="form-control" />
+        <span asp-validation-for="EditableProfile.CompanyName" class="text-danger"></span>
+    </div>
+    <div class="col-md-6">
+        <label asp-for="EditableProfile.Nif" class="form-label">NIF</label>
+        <input asp-for="EditableProfile.Nif" class="form-control" />
+        <span asp-validation-for="EditableProfile.Nif" class="text-danger"></span>
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Guardar</button>
+        <a asp-page="/" class="btn btn-outline-secondary ms-2">Cancelar</a>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -1,0 +1,73 @@
+@page "{batchId}"
+@model Verifactu.Portal.Pages.Batches.DetailsModel
+
+<h1 class="mb-4">Detalle del lote</h1>
+
+@if (Model.Batch is null)
+{
+    <div class="alert alert-warning">No se encontró el lote solicitado.</div>
+}
+else
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Identificador</dt>
+                <dd class="col-sm-9">@Model.Batch.BatchId</dd>
+                <dt class="col-sm-3">Estado</dt>
+                <dd class="col-sm-9">@Model.Batch.Status</dd>
+                <dt class="col-sm-3">Facturas totales</dt>
+                <dd class="col-sm-9">@Model.Batch.TotalItems</dd>
+                <dt class="col-sm-3">Completadas</dt>
+                <dd class="col-sm-9">@Model.Batch.Completed</dd>
+                <dt class="col-sm-3">Pendientes</dt>
+                <dd class="col-sm-9">@Model.Batch.Pending</dd>
+                <dt class="col-sm-3">Fallidas</dt>
+                <dd class="col-sm-9">@Model.Batch.Failed</dd>
+            </dl>
+        </div>
+    </div>
+
+    @if (Model.Batch.HasConsolidatedCsv)
+    {
+        <a class="btn btn-outline-secondary mb-4" download="batch-@Model.Batch.BatchId-report.csv" href="data:text/csv;base64,@Model.Batch.ConsolidatedCsvBase64">Descargar CSV consolidado</a>
+    }
+
+    <h2 class="h4">Elementos del lote</h2>
+    @if (Model.Invoices?.Items?.Any() == true)
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th scope="col">ItemId</th>
+                        <th scope="col">Idempotency</th>
+                        <th scope="col">Estado</th>
+                        <th scope="col">Código AEAT</th>
+                        <th scope="col">Código ACK</th>
+                        <th scope="col">Mensaje ACK</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var invoice in Model.Invoices.Items)
+                {
+                    <tr>
+                        <td>@invoice.ItemId</td>
+                        <td>@invoice.IdempotencyKey</td>
+                        <td>@invoice.Status</td>
+                        <td>@invoice.AeatStatusCode</td>
+                        <td>@invoice.AeatAckCode</td>
+                        <td>@invoice.AeatAckMessage</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">No hay facturas asociadas a este lote.</div>
+    }
+}
+
+<a asp-page="Index" class="btn btn-secondary mt-3">Volver a lotes</a>
