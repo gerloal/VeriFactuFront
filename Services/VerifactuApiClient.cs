@@ -3,8 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 using Verifactu.Portal.Models;
+using Verifactu.Portal.Options;
 
 namespace Verifactu.Portal.Services;
 
@@ -12,21 +16,26 @@ public sealed class VerifactuApiClient
 {
     private readonly HttpClient _httpClient;
     private readonly IAccessTokenProvider _accessTokenProvider;
+    private readonly VerifactuApiOptions _options;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
     };
 
-    public VerifactuApiClient(HttpClient httpClient, IAccessTokenProvider accessTokenProvider, IConfiguration configuration)
+    public VerifactuApiClient(HttpClient httpClient, IAccessTokenProvider accessTokenProvider, IOptions<VerifactuApiOptions> options, IHttpContextAccessor httpContextAccessor)
     {
         _httpClient = httpClient;
         _accessTokenProvider = accessTokenProvider;
+        _options = options?.Value ?? new VerifactuApiOptions();
+        _httpContextAccessor = httpContextAccessor;
 
-        var baseUrl = configuration["VerifactuApi:BaseUrl"];
-        if (!string.IsNullOrWhiteSpace(baseUrl))
+        if (_httpClient.BaseAddress is null && !string.IsNullOrWhiteSpace(_options.BaseUrl))
         {
-            _httpClient.BaseAddress = new Uri(baseUrl);
+            _httpClient.BaseAddress = new Uri(_options.BaseUrl);
         }
+
+        ApplyHeaders();
     }
 
     private async Task PrepareClientAsync()
@@ -40,7 +49,34 @@ public sealed class VerifactuApiClient
         {
             _httpClient.DefaultRequestHeaders.Authorization = null;
         }
+
+        ApplyHeaders();
     }
+
+    private void ApplyHeaders()
+    {
+        var user = _httpContextAccessor.HttpContext?.User;
+        var apiKeyFromClaims = GetClaimValue(user, "apiKey") ?? GetClaimValue(user, "custom:ApiKey");
+        var tenantIdFromClaims = GetClaimValue(user, "tenantId") ?? GetClaimValue(user, "custom:tenantId");
+
+        SetHeader("X-API-Key", apiKeyFromClaims ?? _options.ApiKey);
+        SetHeader("X-App-Key", _options.AppKey);
+        SetHeader("X-Tenant-Id", tenantIdFromClaims ?? _options.TenantId);
+        SetHeader("X-CloudFront-Secret", _options.CloudFrontSecret);
+    }
+
+    private void SetHeader(string name, string? value)
+    {
+        _httpClient.DefaultRequestHeaders.Remove(name);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(name, value);
+        }
+    }
+
+    private static string? GetClaimValue(ClaimsPrincipal? user, string claimType)
+        => user?.FindFirst(claimType)?.Value;
 
     public async Task<PagedResult<BatchDto>> GetBatchesAsync(DateTime? from, DateTime? to, string? status, int page = 1, int pageSize = 50)
     {

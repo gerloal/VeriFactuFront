@@ -2,6 +2,9 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using Verifactu.Portal.Options;
 using Verifactu.Portal.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +17,25 @@ if (!builder.Environment.IsDevelopment())
 builder.Services.AddRazorPages();
 
 builder.Services.AddHttpContextAccessor();
+
+builder.Services.Configure<VerifactuApiOptions>(builder.Configuration.GetSection("VerifactuApi"));
+builder.Services.PostConfigure<VerifactuApiOptions>(options =>
+{
+    if (string.IsNullOrWhiteSpace(options.AppKey))
+    {
+        options.AppKey = builder.Configuration["Security:AppKey"]
+                          ?? builder.Configuration["Security:ExpectedAppKey"]
+                          ?? (builder.Environment.IsDevelopment() ? "bpfs7fovu2" : null);
+    }
+
+    if (string.IsNullOrWhiteSpace(options.CloudFrontSecret))
+    {
+        options.CloudFrontSecret = builder.Configuration["Security:ExpectedCloudFrontSecret"]
+                                   ?? (builder.Environment.IsDevelopment()
+                                       ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkdlbmVyYXRlZCBVc2VyIiwiaWF0IjoxNzY0OTU5NjM5LCJleHAiOjE3NjQ5NjMyMzl9.WoXGXFdbBd+1zsipXPzo5QzHQo8eELnNSuNCkHQ7lYU="
+                                       : null);
+    }
+});
 
 builder.Services.AddAuthentication(options =>
 {
@@ -49,7 +71,8 @@ builder.Services.AddAuthentication(options =>
     options.Scope.Add("email");
 
     options.TokenValidationParameters.NameClaimType = ClaimTypes.Name;
-    options.ClaimActions.MapJsonKey("tenantId", "tenantId");
+    options.ClaimActions.MapJsonKey("tenantId", "custom:tenantId");
+    options.ClaimActions.MapJsonKey("apiKey", "custom:ApiKey");
 });
 
 builder.Services.AddAuthorization(options =>
@@ -63,12 +86,11 @@ builder.Services.AddScoped<IAccessTokenProvider, HttpContextAccessTokenProvider>
 
 builder.Services.AddHttpClient<VerifactuApiClient>((provider, client) =>
 {
-    var configuration = provider.GetRequiredService<IConfiguration>();
-    var baseUrl = configuration["VerifactuApi:BaseUrl"];
+    var options = provider.GetRequiredService<IOptions<VerifactuApiOptions>>().Value;
 
-    if (!string.IsNullOrWhiteSpace(baseUrl))
+    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
     {
-        client.BaseAddress = new Uri(baseUrl);
+        client.BaseAddress = new Uri(options.BaseUrl);
     }
 });
 

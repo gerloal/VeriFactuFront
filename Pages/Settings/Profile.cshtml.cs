@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -29,30 +30,19 @@ public sealed class ProfileModel(VerifactuApiClient apiClient, ILogger<ProfileMo
         {
             EditableProfile = await _apiClient.GetProfileAsync();
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            _logger.LogWarning(ex, "Forbidden while retrieving profile information.");
+            StatusMessage = "No tienes permisos para consultar el perfil de la compañía.";
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Unexpected HTTP error retrieving profile information.");
+            StatusMessage = "No se pudo recuperar el perfil. Inténtalo de nuevo más tarde.";
+        }
         catch (NotImplementedException)
         {
             _logger.LogWarning("GetProfileAsync is not implemented yet.");
         }
-    }
-
-    public async Task<IActionResult> OnPostAsync()
-    {
-        if (!ModelState.IsValid)
-        {
-            return Page();
-        }
-
-        try
-        {
-            await _apiClient.UpdateProfileAsync(EditableProfile);
-            StatusMessage = "Perfil actualizado correctamente.";
-        }
-        catch (NotImplementedException)
-        {
-            _logger.LogWarning("UpdateProfileAsync is not implemented yet.");
-            StatusMessage = "Esta acción aún no está disponible.";
-        }
-
-        return Page();
     }
 }
