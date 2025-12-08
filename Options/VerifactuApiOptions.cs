@@ -11,4 +11,6 @@ public sealed class VerifactuApiOptions
     public string? TenantId { get; set; }
 
     public string? CloudFrontSecret { get; set; }
+
+    public string? RemoteConsultationEndpoint { get; set; }
 }

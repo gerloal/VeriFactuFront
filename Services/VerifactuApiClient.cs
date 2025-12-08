@@ -7,6 +7,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Threading;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
@@ -169,6 +170,28 @@ public sealed class VerifactuApiClient
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<RemoteUserStatusDto>(SerializerOptions).ConfigureAwait(false)
                ?? new RemoteUserStatusDto { RemoteCertificateEnabled = false };
+    }
+
+    public async Task<RemoteConsultationResponseDto?> ExecuteRemoteConsultationAsync(RemoteConsultationRequestDto request, CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var response = await _httpClient.PostAsJsonAsync(
+            "remote/consultas",
+            request,
+            SerializerOptions,
+            cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<RemoteConsultationResponseDto>(SerializerOptions, cancellationToken).ConfigureAwait(false)
+               ?? new RemoteConsultationResponseDto();
     }
 
     public async Task DeleteBatchAsync(string batchId)
