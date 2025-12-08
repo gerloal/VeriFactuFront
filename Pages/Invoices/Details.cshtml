@@ -71,6 +71,69 @@ else
         </div>
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(invoice.QrUrl) || !string.IsNullOrWhiteSpace(Model.QrImageBase64))
+    {
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>Código QR</strong>
+                @if (!string.IsNullOrWhiteSpace(invoice.QrUrl))
+                {
+                    <small class="text-muted">Verificación AEAT</small>
+                }
+            </div>
+            <div class="card-body text-center">
+                @if (!string.IsNullOrWhiteSpace(Model.QrImageBase64))
+                {
+                    <img src="data:image/png;base64,@Model.QrImageBase64" alt="Código QR de la factura" class="img-fluid" style="max-width: 240px;" />
+                    <div class="mt-3">
+                        <a class="btn btn-outline-primary"
+                           asp-page-handler="DownloadQr"
+                           asp-route-facturaId="@invoice.FacturaId"
+                           asp-route-idempotencyKey="@invoice.IdempotencyKey">
+                            Descargar PNG
+                        </a>
+                        @if (!string.IsNullOrWhiteSpace(invoice.QrUrl))
+                        {
+                            <a class="btn btn-link ms-2" href="@invoice.QrUrl" target="_blank" rel="noopener">
+                                Validar en AEAT
+                            </a>
+                        }
+                    </div>
+                    <div class="mt-4 text-start">
+                        <div class="card bg-light border-0">
+                            <div class="card-body py-3">
+                                <dl class="row mb-0 small">
+                                    <dt class="col-sm-4">qrUrl</dt>
+                                    <dd class="col-sm-8 text-break">@(string.IsNullOrWhiteSpace(invoice.QrUrl) ? "-" : invoice.QrUrl)</dd>
+
+                                    <dt class="col-sm-4">qrPngBase64</dt>
+                                    <dd class="col-sm-8 text-break">@(string.IsNullOrWhiteSpace(invoice.QrPngBase64) ? "-" : (invoice.QrPngBase64.Length > 80 ? invoice.QrPngBase64.Substring(0, 80) + "…" : invoice.QrPngBase64))</dd>
+
+                                    <dt class="col-sm-4">qrS3Key</dt>
+                                    <dd class="col-sm-8 text-break">@(string.IsNullOrWhiteSpace(invoice.QrS3Key) ? "-" : invoice.QrS3Key)</dd>
+
+                                    <dt class="col-sm-4">ledger.qrKey</dt>
+                                    <dd class="col-sm-8 text-break">@(string.IsNullOrWhiteSpace(invoice.Ledger?.QrKey) ? "-" : invoice.Ledger.QrKey)</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(invoice.QrUrl))
+                {
+                    <p class="text-muted mb-2">El código QR no está disponible como imagen.</p>
+                    <a class="btn btn-outline-primary" href="@invoice.QrUrl" target="_blank" rel="noopener">
+                        Validar en AEAT
+                    </a>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">Código QR no disponible.</p>
+                }
+            </div>
+        </div>
+    }
+
     <div class="row g-4">
         <div class="col-lg-6">
             <div class="card h-100">
@@ -78,7 +141,7 @@ else
                     <strong>Idempotencia</strong>
                 </div>
                 <div class="card-body">
-                    if (invoice.Idempotency is null)
+                    @if (invoice.Idempotency is null)
                     {
                         <p class="text-muted mb-0">Sin información de idempotencia.</p>
                     }
@@ -206,6 +269,12 @@ else
                         ("Respuesta AEAT", "aeat-response", invoice.Documentos.AeatResponseKey),
                         ("Resumen AEAT", "aeat-summary", invoice.Documentos.AeatSummaryKey)
                     };
+
+                var qrAvailable = !string.IsNullOrWhiteSpace(Model.QrImageBase64)
+                                   || !string.IsNullOrWhiteSpace(invoice.QrS3Key)
+                                   || !string.IsNullOrWhiteSpace(invoice.Ledger?.QrKey)
+                                   || !string.IsNullOrWhiteSpace(invoice.Documentos?.QrKey)
+                                   || !string.IsNullOrWhiteSpace(invoice.QrUrl);
             }
 
             <div class="table-responsive">
@@ -245,6 +314,21 @@ else
                                     </td>
                                 </tr>
                             }
+                            <tr>
+                                <td>QR PNG</td>
+                                <td>@(qrAvailable ? "Disponible" : "No disponible")</td>
+                                <td class="text-end">
+                                    @if (qrAvailable)
+                                    {
+                                        <a class="btn btn-sm btn-outline-primary"
+                                           asp-page-handler="DownloadQr"
+                                           asp-route-facturaId="@invoice.FacturaId"
+                                           asp-route-idempotencyKey="@invoice.IdempotencyKey">
+                                            Descargar
+                                        </a>
+                                    }
+                                </td>
+                            </tr>
                         }
                     </tbody>
                 </table>

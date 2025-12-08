@@ -7,6 +7,8 @@
 <h1 class="mb-4">Facturas</h1>
 
 <form method="get" class="row g-3 align-items-end mb-4">
+    <input type="hidden" name="PaginationTrail" value="@Model.PaginationTrail" />
+    <input type="hidden" name="CurrentToken" value="@Model.CurrentToken" />
     <div class="col-sm-3">
         <label asp-for="Nif" class="form-label">NIF destinatario/Emisor</label>
         <input asp-for="Nif" class="form-control" />
@@ -35,9 +37,20 @@
         <label asp-for="PageSize" class="form-label">Resultados</label>
         <input asp-for="PageSize" class="form-control" type="number" min="1" />
     </div>
-    <div class="col-auto">
+    <div class="col-auto d-flex gap-2">
         <button type="submit" class="btn btn-primary">Buscar</button>
         <a asp-page="./Index" class="btn btn-outline-secondary">Limpiar</a>
+        <a asp-page="./Index"
+           class="btn btn-outline-primary"
+           asp-route-Emisor="@Model.Emisor"
+           asp-route-Nif="@Model.Nif"
+           asp-route-NumeroSerie="@Model.NumeroSerie"
+           asp-route-Estado="@Model.Estado"
+           asp-route-FechaDesde="@(Model.FechaDesde?.ToString("yyyy-MM-dd"))"
+           asp-route-FechaHasta="@(Model.FechaHasta?.ToString("yyyy-MM-dd"))"
+           asp-route-PageSize="@Model.PageSize">
+            Actualizar resultados
+        </a>
     </div>
 </form>
 
@@ -103,10 +116,11 @@ else
             Mostrando @Model.Result.Items.Count facturas.
         </div>
         <div>
-            @if (Model.HasNextPage)
+            @if (Model.HasPreviousPage)
             {
-                <a class="btn btn-outline-primary"
+                <a class="btn btn-outline-secondary me-2"
                    asp-page="./Index"
+                   asp-route-direction="prev"
                    asp-route-Emisor="@Model.Emisor"
                    asp-route-Nif="@Model.Nif"
                    asp-route-NumeroSerie="@Model.NumeroSerie"
@@ -114,7 +128,27 @@ else
                    asp-route-FechaDesde="@(Model.FechaDesde?.ToString("yyyy-MM-dd"))"
                    asp-route-FechaHasta="@(Model.FechaHasta?.ToString("yyyy-MM-dd"))"
                    asp-route-PageSize="@Model.PageSize"
-                   asp-route-ContinuationToken="@Model.Result.ContinuationToken">
+                   asp-route-ContinuationToken="@Model.PreviousToken"
+                   asp-route-PaginationTrail="@Model.PreviousTrailSerialized"
+                   asp-route-CurrentToken="@Model.CurrentToken">
+                    Página anterior
+                </a>
+            }
+            @if (Model.HasNextPage)
+            {
+                <a class="btn btn-outline-primary"
+                   asp-page="./Index"
+                   asp-route-direction="next"
+                   asp-route-Emisor="@Model.Emisor"
+                   asp-route-Nif="@Model.Nif"
+                   asp-route-NumeroSerie="@Model.NumeroSerie"
+                   asp-route-Estado="@Model.Estado"
+                   asp-route-FechaDesde="@(Model.FechaDesde?.ToString("yyyy-MM-dd"))"
+                   asp-route-FechaHasta="@(Model.FechaHasta?.ToString("yyyy-MM-dd"))"
+                   asp-route-PageSize="@Model.PageSize"
+                   asp-route-ContinuationToken="@Model.Result.ContinuationToken"
+                   asp-route-PaginationTrail="@Model.NextTrailSerialized"
+                   asp-route-CurrentToken="@Model.Result.ContinuationToken">
                     Siguiente página
                 </a>
             }

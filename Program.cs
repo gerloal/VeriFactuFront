@@ -1,6 +1,9 @@
+using System;
 using System.Security.Claims;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
@@ -73,6 +76,97 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters.NameClaimType = ClaimTypes.Name;
     options.ClaimActions.MapJsonKey("tenantId", "custom:tenantId");
     options.ClaimActions.MapJsonKey("apiKey", "custom:ApiKey");
+
+    var signedOutRedirect = cognitoSection["SignedOutRedirectUri"];
+    if (!string.IsNullOrWhiteSpace(signedOutRedirect))
+    {
+        options.SignedOutRedirectUri = signedOutRedirect;
+    }
+
+    options.Events = new OpenIdConnectEvents
+    {
+        OnRedirectToIdentityProviderForSignOut = context =>
+        {
+            var cognitoDomain = cognitoSection["HostedDomain"];
+            if (string.IsNullOrWhiteSpace(cognitoDomain))
+            {
+                cognitoDomain = context.Options.Authority;
+            }
+
+            cognitoDomain ??= string.Empty;
+
+            var request = context.HttpContext.Request;
+            var callbackPath = context.Options.SignedOutCallbackPath.HasValue
+                ? context.Options.SignedOutCallbackPath.Value
+                : "/";
+
+            var callback = callbackPath.StartsWith("/", StringComparison.Ordinal)
+                ? string.Concat(request.Scheme, "://", request.Host.ToUriComponent(), callbackPath)
+                : callbackPath;
+
+            if (context.Properties is null)
+            {
+                throw new InvalidOperationException("Logout context did not include authentication properties.");
+            }
+
+            var redirectDestination = context.Properties.RedirectUri;
+            if (string.IsNullOrWhiteSpace(redirectDestination))
+            {
+                redirectDestination = signedOutRedirect;
+            }
+
+            if (string.IsNullOrWhiteSpace(redirectDestination))
+            {
+                redirectDestination = context.Options.SignedOutRedirectUri;
+            }
+
+            if (string.IsNullOrWhiteSpace(redirectDestination))
+            {
+                redirectDestination = "/";
+            }
+
+            if (redirectDestination.StartsWith("/", StringComparison.Ordinal))
+            {
+                redirectDestination = string.Concat(request.Scheme, "://", request.Host.ToUriComponent(), redirectDestination);
+            }
+
+            context.Properties.RedirectUri = redirectDestination;
+
+            var logoutUri = string.Concat(cognitoDomain.TrimEnd('/'), "/logout");
+            var clientId = context.Options.ClientId ?? cognitoSection["ClientId"] ?? string.Empty;
+            var redirectUrl = $"{logoutUri}?client_id={Uri.EscapeDataString(clientId)}&logout_uri={Uri.EscapeDataString(callback)}";
+
+            context.Response.Redirect(redirectUrl);
+            context.HandleResponse();
+            return Task.CompletedTask;
+        },
+        OnSignedOutCallbackRedirect = context =>
+        {
+            string? target = context.Properties?.RedirectUri;
+
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                target = !string.IsNullOrWhiteSpace(signedOutRedirect)
+                    ? signedOutRedirect
+                    : context.Options.SignedOutRedirectUri;
+            }
+
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                target = "/";
+            }
+
+            if (target.StartsWith("/", StringComparison.Ordinal))
+            {
+                var request = context.HttpContext.Request;
+                target = string.Concat(request.Scheme, "://", request.Host.ToUriComponent(), target);
+            }
+
+            context.Response.Redirect(target);
+            context.HandleResponse();
+            return Task.CompletedTask;
+        }
+    };
 });
 
 builder.Services.AddAuthorization(options =>
@@ -83,6 +177,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddScoped<IAccessTokenProvider, HttpContextAccessTokenProvider>();
+builder.Services.AddSingleton<IQrCodeRenderer, QrCodeRenderer>();
 
 builder.Services.AddHttpClient<VerifactuApiClient>((provider, client) =>
 {

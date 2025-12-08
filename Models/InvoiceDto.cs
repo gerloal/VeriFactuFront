@@ -10,6 +10,12 @@ public sealed class InvoiceDto
     [JsonPropertyName("idempotencyKey")]
     public required string IdempotencyKey { get; init; }
 
+    [JsonPropertyName("facturaId")]
+    public string? FacturaId { get; init; }
+
+    [JsonPropertyName("numeroSerie")]
+    public string? NumeroSerie { get; init; }
+
     [JsonPropertyName("estado")]
     public required string Status { get; init; }
 

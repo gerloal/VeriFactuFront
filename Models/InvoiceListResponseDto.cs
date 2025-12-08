@@ -83,4 +83,7 @@ public sealed class InvoiceDocumentPointersDto
 
     [JsonPropertyName("aeatSummaryKey")]
     public string? AeatSummaryKey { get; init; }
+
+    [JsonPropertyName("qrKey")]
+    public string? QrKey { get; init; }
 }

@@ -3,12 +3,37 @@
 
 <h1 class="mb-4">Detalle del lote</h1>
 
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-info">@Model.StatusMessage</div>
+}
+
 @if (Model.Batch is null)
 {
     <div class="alert alert-warning">No se encontró el lote solicitado.</div>
 }
 else
 {
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            @if (Model.CanUseRemoteCertificate && Model.Batch.Pending > 0)
+            {
+                <form method="post"
+                      asp-page-handler="Resume"
+                      asp-route-batchId="@Model.Batch.BatchId"
+                      class="d-inline me-2">
+                    <button type="submit" class="btn btn-success">Reanudar lote</button>
+                </form>
+            }
+        </div>
+        <form method="post"
+              asp-page-handler="Delete"
+              asp-route-batchId="@Model.Batch.BatchId"
+              onsubmit="return confirm('¿Seguro que deseas eliminar el lote @Model.Batch.BatchId? Esta acción no se puede deshacer.');">
+            <button type="submit" class="btn btn-danger">Eliminar lote</button>
+        </form>
+    </div>
+
     <div class="card mb-4">
         <div class="card-body">
             <dl class="row mb-0">
@@ -33,6 +58,52 @@ else
         <a class="btn btn-outline-secondary mb-4" download="batch-@Model.Batch.BatchId-report.csv" href="data:text/csv;base64,@Model.Batch.ConsolidatedCsvBase64">Descargar CSV consolidado</a>
     }
 
+    <h2 class="h4">Facturas pendientes</h2>
+    @if (Model.PendingInvoices?.Any() == true)
+    {
+        <div class="table-responsive mb-4">
+            <table class="table table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th scope="col">ItemId</th>
+                        <th scope="col">Factura</th>
+                        <th scope="col">Serie</th>
+                        <th scope="col">Idempotencia</th>
+                        <th scope="col">Estado</th>
+                        <th scope="col">Código AEAT</th>
+                        <th scope="col">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var invoice in Model.PendingInvoices)
+                {
+                    <tr>
+                        <td>@invoice.ItemId</td>
+                        <td>@(string.IsNullOrWhiteSpace(invoice.FacturaId) ? "-" : invoice.FacturaId)</td>
+                        <td>@(string.IsNullOrWhiteSpace(invoice.NumeroSerie) ? "-" : invoice.NumeroSerie)</td>
+                        <td>@invoice.IdempotencyKey</td>
+                        <td>@invoice.Status</td>
+                        <td>@(invoice.AeatStatusCode?.ToString() ?? "-")</td>
+                        <td>
+                            <form method="post" class="d-inline"
+                                  asp-page-handler="ViewInvoice"
+                                  asp-route-batchId="@Model.Batch.BatchId"
+                                  asp-route-itemId="@invoice.ItemId"
+                                  asp-route-idempotencyKey="@invoice.IdempotencyKey">
+                                <button type="submit" class="btn btn-sm btn-outline-primary">Ver factura</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-secondary">No hay facturas pendientes en este lote.</div>
+    }
+
     <h2 class="h4">Elementos del lote</h2>
     @if (Model.Invoices?.Items?.Any() == true)
     {
@@ -41,11 +112,14 @@ else
                 <thead>
                     <tr>
                         <th scope="col">ItemId</th>
+                        <th scope="col">Factura</th>
+                        <th scope="col">Serie</th>
                         <th scope="col">Idempotency</th>
                         <th scope="col">Estado</th>
                         <th scope="col">Código AEAT</th>
                         <th scope="col">Código ACK</th>
                         <th scope="col">Mensaje ACK</th>
+                        <th scope="col">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -53,11 +127,22 @@ else
                 {
                     <tr>
                         <td>@invoice.ItemId</td>
+                        <td>@(string.IsNullOrWhiteSpace(invoice.FacturaId) ? "-" : invoice.FacturaId)</td>
+                        <td>@(string.IsNullOrWhiteSpace(invoice.NumeroSerie) ? "-" : invoice.NumeroSerie)</td>
                         <td>@invoice.IdempotencyKey</td>
                         <td>@invoice.Status</td>
                         <td>@invoice.AeatStatusCode</td>
                         <td>@invoice.AeatAckCode</td>
                         <td>@invoice.AeatAckMessage</td>
+                        <td>
+                            <form method="post" class="d-inline"
+                                  asp-page-handler="ViewInvoice"
+                                  asp-route-batchId="@Model.Batch.BatchId"
+                                  asp-route-itemId="@invoice.ItemId"
+                                  asp-route-idempotencyKey="@invoice.IdempotencyKey">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Ver</button>
+                            </form>
+                        </td>
                     </tr>
                 }
                 </tbody>

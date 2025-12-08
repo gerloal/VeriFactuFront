@@ -1,0 +1,46 @@
+@page "{batchId}/item/{itemId}"
+@model Verifactu.Portal.Pages.Batches.ItemResultModel
+
+<h1 class="mb-4">Resultado del elemento</h1>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-info">@Model.StatusMessage</div>
+}
+
+@if (Model.Result is null)
+{
+    <div class="alert alert-warning">No se encontró información para el elemento solicitado.</div>
+}
+else
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">ItemId</dt>
+                <dd class="col-sm-9">@(string.IsNullOrWhiteSpace(Model.Result.ItemId) ? "-" : Model.Result.ItemId)</dd>
+                <dt class="col-sm-3">Factura Id</dt>
+                <dd class="col-sm-9">@(string.IsNullOrWhiteSpace(Model.Result.FacturaId) ? "-" : Model.Result.FacturaId)</dd>
+                <dt class="col-sm-3">Idempotency</dt>
+                <dd class="col-sm-9">@(string.IsNullOrWhiteSpace(Model.Result.IdempotencyKey) ? "-" : Model.Result.IdempotencyKey)</dd>
+            </dl>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.Result.FacturaId))
+    {
+        <a class="btn btn-primary mb-4" asp-page="/Invoices/Details" asp-route-facturaId="@Model.Result.FacturaId" asp-route-idempotencyKey="@Model.Result.IdempotencyKey">Ver factura en detalle</a>
+    }
+
+    <h2 class="h5">Respuesta completa</h2>
+    @if (!string.IsNullOrWhiteSpace(Model.PrettyPayload))
+    {
+        <pre class="bg-light p-3 border rounded" style="white-space: pre-wrap; word-break: break-all;">@Model.PrettyPayload</pre>
+    }
+    else
+    {
+        <div class="alert alert-secondary">No se pudo formatear la respuesta devuelta por la API.</div>
+    }
+}
+
+<a asp-page="Details" asp-route-batchId="@Model.BatchId" class="btn btn-secondary mt-3">Volver al lote</a>

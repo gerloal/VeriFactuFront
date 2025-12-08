@@ -56,6 +56,15 @@ public sealed class InvoiceDetailDto
 
     [JsonPropertyName("documentos")]
     public InvoiceDocumentPointersDto Documentos { get; init; } = new();
+
+    [JsonPropertyName("qrUrl")]
+    public string? QrUrl { get; init; }
+
+    [JsonPropertyName("qrPngBase64")]
+    public string? QrPngBase64 { get; init; }
+
+    [JsonPropertyName("qrS3Key")]
+    public string? QrS3Key { get; init; }
 }
 
 public sealed class LedgerChainSnapshotDto
@@ -101,6 +110,9 @@ public sealed class LedgerChainSnapshotDto
 
     [JsonPropertyName("cancelTimestamp")]
     public DateTimeOffset? CancelTimestamp { get; init; }
+
+    [JsonPropertyName("qrKey")]
+    public string? QrKey { get; init; }
 }
 
 public sealed class IdempotencySnapshotDto

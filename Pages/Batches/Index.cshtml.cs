@@ -37,6 +37,9 @@ public sealed class IndexModel(VerifactuApiClient apiClient, ILogger<IndexModel>
 
     public int TotalPages => PagedBatches?.TotalPages ?? 0;
 
+    [TempData]
+    public string? StatusMessage { get; set; }
+
     public async Task OnGetAsync()
     {
         try

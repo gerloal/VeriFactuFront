@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -152,6 +153,210 @@ public sealed class VerifactuApiClient
 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<BatchDetailDto>(SerializerOptions).ConfigureAwait(false);
+    }
+
+    public async Task<RemoteUserStatusDto> GetRemoteUserStatusAsync()
+    {
+        await PrepareClientAsync();
+
+        using var response = await _httpClient.GetAsync("remote/user").ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new RemoteUserStatusDto { RemoteCertificateEnabled = false };
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RemoteUserStatusDto>(SerializerOptions).ConfigureAwait(false)
+               ?? new RemoteUserStatusDto { RemoteCertificateEnabled = false };
+    }
+
+    public async Task DeleteBatchAsync(string batchId)
+    {
+        await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(batchId))
+        {
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(batchId));
+        }
+
+        using var response = await _httpClient.DeleteAsync($"batches/{Uri.EscapeDataString(batchId)}").ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return;
+        }
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<RemoteSubmissionResponseDto?> ResumeBatchAsync(string batchId, int maxItems = 10, int pollSeconds = 1, string? operationFilter = null)
+    {
+        await PrepareClientAsync();
+
+        if (string.IsNullOrWhiteSpace(batchId))
+        {
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(batchId));
+        }
+
+        var payload = new
+        {
+            maxItems = Math.Max(1, maxItems),
+            pollSeconds = Math.Max(0, pollSeconds),
+            operation = string.IsNullOrWhiteSpace(operationFilter) ? null : operationFilter
+        };
+
+        using var response = await _httpClient.PostAsJsonAsync(
+            $"remote/batches/{Uri.EscapeDataString(batchId)}/resume",
+            payload,
+            SerializerOptions).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<RemoteSubmissionResponseDto>(SerializerOptions).ConfigureAwait(false);
+    }
+
+    public async Task<IList<InvoiceDto>> GetBatchItemsAsync(string batchId, string? status = null)
+    {
+        await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(batchId))
+        {
+            return Array.Empty<InvoiceDto>();
+        }
+
+        var query = new Dictionary<string, string?>
+        {
+            ["batchId"] = batchId
+        };
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query["status"] = status;
+        }
+
+        var endpoint = QueryHelpers.AddQueryString("items", query!);
+
+        using var response = await _httpClient.GetAsync(endpoint).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return Array.Empty<InvoiceDto>();
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return Array.Empty<InvoiceDto>();
+        }
+
+        try
+        {
+            var itemsResponse = JsonSerializer.Deserialize<BatchItemsResponseDto>(payload, SerializerOptions);
+            if (itemsResponse?.Items is { Count: > 0 })
+            {
+                return itemsResponse.Items;
+            }
+        }
+        catch (JsonException)
+        {
+            // Intentional fall-through to try parsing as a plain array.
+        }
+
+        try
+        {
+            var directItems = JsonSerializer.Deserialize<IList<InvoiceDto>>(payload, SerializerOptions);
+            return directItems ?? Array.Empty<InvoiceDto>();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<InvoiceDto>();
+        }
+    }
+
+    public async Task<BatchItemResultSummary?> GetBatchItemResultSummaryAsync(string itemId)
+    {
+        await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return null;
+        }
+
+        var path = $"items/{Uri.EscapeDataString(itemId)}/result";
+
+        using var response = await _httpClient.GetAsync(path).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return new BatchItemResultSummary();
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            var root = document.RootElement;
+
+            string? facturaId = TryReadString(root, "facturaId");
+            string? idempotencyKey = TryReadString(root, "idempotencyKey");
+
+            if (string.IsNullOrWhiteSpace(facturaId) && root.ValueKind == JsonValueKind.Object && root.TryGetProperty("factura", out var facturaElement))
+            {
+                facturaId = TryReadString(facturaElement, "facturaId");
+                if (string.IsNullOrWhiteSpace(idempotencyKey))
+                {
+                    idempotencyKey = TryReadString(facturaElement, "idempotencyKey");
+                }
+            }
+
+            return new BatchItemResultSummary
+            {
+                ItemId = itemId,
+                FacturaId = facturaId,
+                IdempotencyKey = idempotencyKey,
+                RawPayload = payload
+            };
+        }
+        catch (JsonException)
+        {
+            return new BatchItemResultSummary
+            {
+                ItemId = itemId,
+                RawPayload = payload
+            };
+        }
+
+        static string? TryReadString(JsonElement element, string propertyName)
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            if (element.TryGetProperty(propertyName, out var valueElement))
+            {
+                return valueElement.ValueKind switch
+                {
+                    JsonValueKind.String => valueElement.GetString(),
+                    JsonValueKind.Number => valueElement.TryGetInt64(out var number) ? number.ToString(CultureInfo.InvariantCulture) : valueElement.GetRawText(),
+                    _ => valueElement.GetRawText()
+                };
+            }
+
+            return null;
+        }
     }
 
     public async Task<PagedResult<InvoiceDto>> GetInvoicesByBatchAsync(string batchId, int page = 1, int pageSize = 50)
