@@ -34,6 +34,14 @@ else
                             <span asp-validation-for="Input.ReferenciaExterna" class="text-danger"></span>
                         </div>
                         <div class="col-md-4">
+                            <label class="form-label">NIF cliente</label>
+                            <input class="form-control" value="@Model.RemoteClientNif" readonly />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Razón social cliente</label>
+                            <input class="form-control" value="@Model.RemoteClientNombreRazon" readonly />
+                        </div>
+                        <div class="col-md-4">
                             <label asp-for="Input.ClienteNif" class="form-label"></label>
                             <input asp-for="Input.ClienteNif" class="form-control" />
                             <span asp-validation-for="Input.ClienteNif" class="text-danger"></span>
@@ -101,10 +109,6 @@ else
                 </fieldset>
                 <div class="mt-4 d-flex align-items-center gap-3">
                     <button type="submit" class="btn btn-primary" id="consultaSubmit">Lanzar consulta</button>
-                    @if (!string.IsNullOrWhiteSpace(Model.RemoteEndpoint))
-                    {
-                        <span class="text-muted small">Endpoint AEAT: @Model.RemoteEndpoint</span>
-                    }
                 </div>
                 <div class="mt-3" id="consultSpinner" style="display:none;">
                     <div class="spinner-border text-primary" role="status">

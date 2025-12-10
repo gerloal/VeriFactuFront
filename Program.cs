@@ -38,6 +38,12 @@ builder.Services.PostConfigure<VerifactuApiOptions>(options =>
                                        ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkdlbmVyYXRlZCBVc2VyIiwiaWF0IjoxNzY0OTU5NjM5LCJleHAiOjE3NjQ5NjMyMzl9.WoXGXFdbBd+1zsipXPzo5QzHQo8eELnNSuNCkHQ7lYU="
                                        : null);
     }
+
+    if (string.IsNullOrWhiteSpace(options.AeatConsultaEndpoint))
+    {
+        options.AeatConsultaEndpoint = builder.Configuration["Security:AeatConsultaEndpoint"]
+                                   ?? "https://prewww1.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion/VerifactuSOAP";
+    }
 });
 
 builder.Services.AddAuthentication(options =>

@@ -612,6 +612,53 @@ public sealed class VerifactuApiClient
         return await response.Content.ReadFromJsonAsync<InvoiceDocumentResponseDto>(SerializerOptions).ConfigureAwait(false);
     }
 
+    public async Task<InvoiceExportResult?> DownloadInvoicesXmlAsync(DateTime from, DateTime to, CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+
+        var normalizedFrom = from.Date;
+        var normalizedTo = to.Date;
+
+        if (normalizedTo < normalizedFrom)
+        {
+            (normalizedFrom, normalizedTo) = (normalizedTo, normalizedFrom);
+        }
+
+        var query = new Dictionary<string, string?>
+        {
+            ["from"] = normalizedFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["to"] = normalizedTo.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+        };
+
+        var endpoint = QueryHelpers.AddQueryString("facturas/export", query!);
+
+        using var message = new HttpRequestMessage(HttpMethod.Get, endpoint);
+        ApplyDefaultHeaders(message);
+
+#if DEBUG
+        var exportUrl = ResolveRequestUrl(message.RequestUri);
+        var exportApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, exportUrl, exportApiKey, "FACTURAS XML EXPORT").ConfigureAwait(false);
+#endif
+
+        using var response = await _httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/zip";
+        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+                   ?? response.Content.Headers.ContentDisposition?.FileName
+                   ?? $"facturas-{normalizedFrom:yyyyMMdd}-{normalizedTo:yyyyMMdd}.zip";
+
+        return new InvoiceExportResult(bytes, contentType, fileName.Trim('"'));
+    }
+
     public async Task<IList<ApiKeyDto>> GetApiKeysAsync()
     {
         await PrepareClientAsync();
@@ -797,19 +844,41 @@ public sealed class VerifactuApiClient
             ? $"  \"isBase64Encoded\": true,\n  \"body\": \"{requestBody}\""
             : $"  \"body\": \"{requestBody}\"";
 
-        var lambdaTestJson = "{" +
-                             $"\n  \"httpMethod\": \"{request.Method.Method}\"," +
-                             $"\n  \"path\": \"{pathFromUrl}\"," +
-                             $"\n  \"headers\": {headersJson}," +
-                             $"\n{bodyLine}," +
-                             "\n  \"requestContext\": {" +
-                             "\n    \"identity\": {" +
-                             $"\n      \"apiKey\": \"{requestApiKey}\"" +
-                             "\n    }" +
-                             "\n  }" +
-                             "\n}";
+        var trimmedQuery = url.Query.StartsWith("?") ? url.Query[1..] : url.Query;
+        var rawQueryEscaped = string.IsNullOrWhiteSpace(trimmedQuery) ? null : trimmedQuery.Replace("\"", "\\\"");
 
-        Console.WriteLine(lambdaTestJson);
+        string? queryParametersJson = null;
+        if (!string.IsNullOrEmpty(url.Query))
+        {
+            var parsed = QueryHelpers.ParseQuery(url.Query);
+            if (parsed.Count > 0)
+            {
+                var dict = parsed.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => kvp.Value.Count > 0 ? kvp.Value[^1] : string.Empty,
+                    StringComparer.OrdinalIgnoreCase);
+                queryParametersJson = JsonSerializer.Serialize(dict);
+            }
+        }
+
+        var lambdaBuilder = new StringBuilder();
+        lambdaBuilder.Append("{");
+        lambdaBuilder.Append($"\n  \"httpMethod\": \"{request.Method.Method}\",");
+        lambdaBuilder.Append($"\n  \"path\": \"{pathFromUrl}\"");
+
+        if (rawQueryEscaped is not null)
+        {
+            lambdaBuilder.Append($",\n  \"rawQueryString\": \"{rawQueryEscaped}\"");
+        }
+
+        if (queryParametersJson is not null)
+        {
+            lambdaBuilder.Append($",\n  \"queryStringParameters\": {queryParametersJson}");
+        }
+
+        lambdaBuilder.Append($",\n  \"headers\": {headersJson},\n{bodyLine},\n  \"requestContext\": {{\n    \"identity\": {{\n      \"apiKey\": \"{requestApiKey}\"\n    }}\n  }}\n}}");
+
+        Console.WriteLine(lambdaBuilder.ToString());
         Console.WriteLine($"=== FIN {operationType} LAMBDA TEST TOOL ===\n");
     }
 }

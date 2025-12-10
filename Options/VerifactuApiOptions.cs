@@ -12,5 +12,6 @@ public sealed class VerifactuApiOptions
 
     public string? CloudFrontSecret { get; set; }
 
-    public string? RemoteConsultationEndpoint { get; set; }
+    public string? AeatConsultaEndpoint { get; set; }
+
 }

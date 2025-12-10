@@ -22,6 +22,8 @@ public sealed class ProfileModel(VerifactuApiClient apiClient, ILogger<ProfileMo
         Email = string.Empty
     };
 
+    public RemoteUserStatusDto? RemoteStatus { get; private set; }
+
     public string? StatusMessage { get; private set; }
 
     public async Task OnGetAsync()
@@ -43,6 +45,15 @@ public sealed class ProfileModel(VerifactuApiClient apiClient, ILogger<ProfileMo
         catch (NotImplementedException)
         {
             _logger.LogWarning("GetProfileAsync is not implemented yet.");
+        }
+
+        try
+        {
+            RemoteStatus = await _apiClient.GetRemoteUserStatusAsync().ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "No se pudo recuperar la información remota del usuario.");
         }
     }
 }

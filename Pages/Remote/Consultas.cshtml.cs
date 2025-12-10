@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.Linq;
 using System.Net.Http;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -46,7 +48,9 @@ public sealed class ConsultasModel : PageModel
 
     public string? StoredMessage { get; private set; }
 
-    public string? RemoteEndpoint => _options.RemoteConsultationEndpoint;
+    public string? RemoteClientNif { get; private set; }
+
+    public string? RemoteClientNombreRazon { get; private set; }
 
     public async Task<IActionResult> OnGetAsync()
     {
@@ -70,18 +74,20 @@ public sealed class ConsultasModel : PageModel
             return Page();
         }
 
-        if (string.IsNullOrWhiteSpace(_options.RemoteConsultationEndpoint))
-        {
-            ErrorMessage = "No hay un endpoint de consulta AEAT configurado. Contacta con el administrador.";
-            return Page();
-        }
-
         var remoteStatus = _remoteStatus ?? await _apiClient.GetRemoteUserStatusAsync().ConfigureAwait(false);
         _remoteStatus = remoteStatus;
+        RemoteClientNif = NormalizeNif(remoteStatus.IdEmisorFactura);
+        RemoteClientNombreRazon = ResolveObligadoNombre(remoteStatus);
 
         if (string.IsNullOrWhiteSpace(remoteStatus.TenantId))
         {
             ErrorMessage = "No se pudo determinar el tenant asociado al usuario.";
+            return Page();
+        }
+        
+        if (string.IsNullOrWhiteSpace(_options.AeatConsultaEndpoint))
+        {
+            ErrorMessage = "No hay un endpoint de consulta AEAT configurado. Contacta con el administrador.";
             return Page();
         }
 
@@ -144,6 +150,8 @@ public sealed class ConsultasModel : PageModel
             _remoteStatus = await _apiClient.GetRemoteUserStatusAsync().ConfigureAwait(false);
             CanUseRemoteCertificate = _remoteStatus.RemoteCertificateEnabled;
             ViewData[nameof(RemoteUserStatusDto.TenantId)] = _remoteStatus.TenantId;
+            RemoteClientNif = NormalizeNif(_remoteStatus.IdEmisorFactura);
+            RemoteClientNombreRazon = ResolveObligadoNombre(_remoteStatus);
             if (!CanUseRemoteCertificate)
             {
                 ErrorMessage = "Tu usuario no tiene habilitado el certificado remoto.";
@@ -155,6 +163,8 @@ public sealed class ConsultasModel : PageModel
             ErrorMessage = "No se pudo comprobar el estado del certificado remoto.";
             CanUseRemoteCertificate = false;
             _remoteStatus = null;
+            RemoteClientNif = null;
+            RemoteClientNombreRazon = null;
         }
     }
 
@@ -170,85 +180,121 @@ public sealed class ConsultasModel : PageModel
             Input.Periodo = DateTime.UtcNow.ToString("MM", CultureInfo.InvariantCulture);
         }
 
-        if (string.IsNullOrWhiteSpace(Input.NifObligado) && _remoteStatus is not null && !string.IsNullOrWhiteSpace(_remoteStatus.TenantId))
-        {
-            Input.NifObligado = _remoteStatus.TenantId;
-        }
     }
 
     private RemoteConsultationRequestDto BuildRequest(RemoteUserStatusDto status)
     {
-        var tenantId = status.TenantId ?? _options.TenantId ?? string.Empty;
+        var tenantId = NormalizeString(status.TenantId) ?? NormalizeString(_options.TenantId) ?? string.Empty;
+        var obligadoNif = NormalizeNif(Input.NifObligado) ?? NormalizeNif(status.IdEmisorFactura);
+        var filtroContraparteNif = NormalizeNif(Input.ClienteNif);
+        var obligadoNombre = NormalizeString(RemoteClientNombreRazon) ?? ResolveObligadoNombre(status);
 
-        var filtro = new RemoteConsultationFiltroDto
+        var request = new RemoteConsultationRequestDto
         {
-            NumSerieFactura = string.IsNullOrWhiteSpace(Input.NumeroSerie) ? null : Input.NumeroSerie.Trim(),
-            RefExterna = string.IsNullOrWhiteSpace(Input.ReferenciaExterna) ? null : Input.ReferenciaExterna.Trim(),
-            ClavePaginacion = string.IsNullOrWhiteSpace(Input.ClavePaginacion) ? null : Input.ClavePaginacion.Trim()
+            TenantId = tenantId ?? string.Empty,
+            ConsultaId = NormalizeString(Input.ConsultaId),
+            Endpoint = _options.AeatConsultaEndpoint!.Trim(),
+            StoreResult = Input.GuardarResultado,
+            DatosAdicionalesRespuesta = new RemoteConsultationAdditionalDataDto
+            {
+                MostrarNombreRazonEmisor = Input.MostrarNombreEmisor ? "S" : "N",
+                MostrarSistemaInformatico = Input.MostrarSistemaInformatico ? "S" : "N"
+            },
+            RequestContext = new RemoteConsultationContextDto
+            {
+                Ejercicio = NormalizeString(Input.Ejercicio),
+                Periodo = NormalizeString(Input.Periodo),
+                NifObligado = obligadoNif
+            }
         };
 
-        if (!string.IsNullOrWhiteSpace(Input.ClienteNif))
+        var cabecera = new RemoteConsultationCabeceraDto
         {
-            filtro.Contraparte = new RemoteConsultationContraparteDto
+            IdVersion = "1.0"
+        };
+
+        if (!string.IsNullOrWhiteSpace(obligadoNif) || !string.IsNullOrWhiteSpace(obligadoNombre))
+        {
+            cabecera.ObligadoEmision = new RemoteConsultationPersonaDto
             {
-                Nif = Input.ClienteNif!.Trim().ToUpperInvariant()
+                Nif = obligadoNif,
+                NombreRazon = obligadoNombre
             };
         }
 
-        if (Input.FechaDesde.HasValue || Input.FechaHasta.HasValue)
+        request.Cabecera = cabecera;
+
+        var filtro = new RemoteConsultationFiltroDto();
+        var hasFiltro = false;
+
+        if (!string.IsNullOrWhiteSpace(Input.NumeroSerie))
         {
-            filtro.FechaExpedicionFactura = new RemoteConsultationFechaFiltroDto
+            filtro.NumSerieFactura = NormalizeString(Input.NumeroSerie);
+            hasFiltro = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Input.ReferenciaExterna))
+        {
+            filtro.RefExterna = NormalizeString(Input.ReferenciaExterna);
+            hasFiltro = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Input.ClavePaginacion))
+        {
+            filtro.ClavePaginacion = new RemoteConsultationClaveDto
             {
-                FechaDesde = Input.FechaDesde?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                FechaHasta = Input.FechaHasta?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                NumSerieFactura = NormalizeString(Input.ClavePaginacion)
             };
+            hasFiltro = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(filtroContraparteNif))
+        {
+            filtro.Contraparte = new RemoteConsultationPersonaDto
+            {
+                Nif = filtroContraparteNif
+            };
+            hasFiltro = true;
         }
 
         if (!string.IsNullOrWhiteSpace(Input.Ejercicio) || !string.IsNullOrWhiteSpace(Input.Periodo))
         {
             filtro.PeriodoImputacion = new RemoteConsultationPeriodoDto
             {
-                Ejercicio = string.IsNullOrWhiteSpace(Input.Ejercicio) ? null : Input.Ejercicio.Trim(),
-                Periodo = string.IsNullOrWhiteSpace(Input.Periodo) ? null : Input.Periodo.Trim()
+                Ejercicio = NormalizeString(Input.Ejercicio),
+                Periodo = NormalizeString(Input.Periodo)
             };
+            hasFiltro = true;
         }
 
-        if (!string.IsNullOrWhiteSpace(Input.SistemaInformaticoNombre) || !string.IsNullOrWhiteSpace(Input.SistemaInformaticoVersion) || !string.IsNullOrWhiteSpace(Input.SistemaInformaticoIdioma))
+        if (Input.FechaDesde.HasValue || Input.FechaHasta.HasValue)
+        {
+            filtro.FechaExpedicionFactura = new RemoteConsultationFechaFiltroDto
+            {
+                RangoFechaExpedicion = new RemoteConsultationRangoFechaDto
+                {
+                    Desde = Input.FechaDesde?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    Hasta = Input.FechaHasta?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                }
+            };
+
+            hasFiltro = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Input.SistemaInformaticoNombre) || !string.IsNullOrWhiteSpace(Input.SistemaInformaticoVersion))
         {
             filtro.SistemaInformatico = new RemoteConsultationSistemaInformaticoDto
             {
-                Nombre = string.IsNullOrWhiteSpace(Input.SistemaInformaticoNombre) ? null : Input.SistemaInformaticoNombre.Trim(),
-                Version = string.IsNullOrWhiteSpace(Input.SistemaInformaticoVersion) ? null : Input.SistemaInformaticoVersion.Trim(),
-                Idioma = string.IsNullOrWhiteSpace(Input.SistemaInformaticoIdioma) ? null : Input.SistemaInformaticoIdioma.Trim()
+                NombreSistemaInformatico = NormalizeString(Input.SistemaInformaticoNombre),
+                Version = NormalizeString(Input.SistemaInformaticoVersion)
             };
+            hasFiltro = true;
         }
 
-        var cabecera = new RemoteConsultationCabeceraDto
+        if (hasFiltro)
         {
-            ObligadoEmision = string.IsNullOrWhiteSpace(tenantId) ? null : new RemoteConsultationContraparteDto { Nif = tenantId },
-            Destinatario = string.IsNullOrWhiteSpace(Input.ClienteNif) ? null : new RemoteConsultationContraparteDto { Nif = Input.ClienteNif!.Trim().ToUpperInvariant() }
-        };
-
-        var request = new RemoteConsultationRequestDto
-        {
-            TenantId = tenantId,
-            Endpoint = _options.RemoteConsultationEndpoint?.Trim() ?? string.Empty,
-            ConsultaId = string.IsNullOrWhiteSpace(Input.ConsultaId) ? null : Input.ConsultaId.Trim(),
-            StoreResult = Input.GuardarResultado,
-            Cabecera = cabecera,
-            FiltroConsulta = filtro,
-            DatosAdicionalesRespuesta = new RemoteConsultationAdditionalDataDto
-            {
-                MostrarNombreEmisor = Input.MostrarNombreEmisor,
-                MostrarSistemaInformatico = Input.MostrarSistemaInformatico
-            },
-            RequestContext = new RemoteConsultationContextDto
-            {
-                Ejercicio = string.IsNullOrWhiteSpace(Input.Ejercicio) ? null : Input.Ejercicio.Trim(),
-                Periodo = string.IsNullOrWhiteSpace(Input.Periodo) ? null : Input.Periodo.Trim(),
-                NifObligado = string.IsNullOrWhiteSpace(Input.NifObligado) ? tenantId : Input.NifObligado!.Trim().ToUpperInvariant()
-            }
-        };
+            request.FiltroConsulta = filtro;
+        }
 
         return request;
     }
@@ -344,7 +390,7 @@ public sealed class ConsultasModel : PageModel
         [StringLength(2, ErrorMessage = "El periodo debe tener 2 dígitos.")]
         public string? Periodo { get; set; }
 
-        [Display(Name = "NIF cliente")]
+        [Display(Name = "NIF contraparte (opcional)")]
         public string? ClienteNif { get; set; }
 
         [Display(Name = "Referencia externa")]
@@ -363,7 +409,7 @@ public sealed class ConsultasModel : PageModel
         public bool MostrarSistemaInformatico { get; set; }
 
         [Display(Name = "Guardar resultado en S3")]
-        public bool GuardarResultado { get; set; } = true;
+        public bool GuardarResultado { get; set; }
 
         [Display(Name = "Nombre sistema informático")]
         public string? SistemaInformaticoNombre { get; set; }
@@ -388,5 +434,34 @@ public sealed class ConsultasModel : PageModel
         public string? Huella { get; init; }
         public string? Cliente { get; init; }
         public string RawJson { get; init; } = string.Empty;
+    }
+
+    private static string? NormalizeString(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? NormalizeNif(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
+
+    private string? ResolveObligadoNombre(RemoteUserStatusDto status)
+    {
+        var candidate = NormalizeString(status.NombreRazon) ?? NormalizeString(status.NombreEmisorFactura);
+        if (!string.IsNullOrWhiteSpace(candidate))
+        {
+            return candidate;
+        }
+
+        candidate = NormalizeString(User?.FindFirstValue("name"));
+        if (!string.IsNullOrWhiteSpace(candidate))
+        {
+            return candidate;
+        }
+
+        var given = NormalizeString(User?.FindFirstValue("given_name"));
+        var family = NormalizeString(User?.FindFirstValue("family_name"));
+
+        if (!string.IsNullOrWhiteSpace(given) || !string.IsNullOrWhiteSpace(family))
+        {
+            return string.Join(" ", new[] { given, family }.Where(static x => !string.IsNullOrWhiteSpace(x)));
+        }
+
+        return null;
     }
 }

@@ -8,23 +8,26 @@ public sealed class RemoteConsultationRequestDto
     public string TenantId { get; set; } = string.Empty;
 
     [JsonPropertyName("endpoint")]
-    public string Endpoint { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Endpoint { get; set; }
 
     [JsonPropertyName("consultaId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ConsultaId { get; set; }
 
-    [JsonPropertyName("storeResult")]
-    public bool StoreResult { get; set; }
-
     [JsonPropertyName("cabecera")]
-    public RemoteConsultationCabeceraDto Cabecera { get; set; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RemoteConsultationCabeceraDto? Cabecera { get; set; }
 
     [JsonPropertyName("filtroConsulta")]
-    public RemoteConsultationFiltroDto FiltroConsulta { get; set; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RemoteConsultationFiltroDto? FiltroConsulta { get; set; }
 
     [JsonPropertyName("datosAdicionalesRespuesta")]
     public RemoteConsultationAdditionalDataDto DatosAdicionalesRespuesta { get; set; } = new();
+
+    [JsonPropertyName("storeResult")]
+    public bool StoreResult { get; set; }
 
     [JsonPropertyName("requestContext")]
     public RemoteConsultationContextDto RequestContext { get; set; } = new();
@@ -32,16 +35,24 @@ public sealed class RemoteConsultationRequestDto
 
 public sealed class RemoteConsultationCabeceraDto
 {
+    [JsonPropertyName("idVersion")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? IdVersion { get; set; }
+
     [JsonPropertyName("obligadoEmision")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public RemoteConsultationContraparteDto? ObligadoEmision { get; set; }
+    public RemoteConsultationPersonaDto? ObligadoEmision { get; set; }
 
     [JsonPropertyName("destinatario")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public RemoteConsultationContraparteDto? Destinatario { get; set; }
+    public RemoteConsultationPersonaDto? Destinatario { get; set; }
+
+    [JsonPropertyName("indicadorRepresentante")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? IndicadorRepresentante { get; set; }
 }
 
-public sealed class RemoteConsultationContraparteDto
+public sealed class RemoteConsultationPersonaDto
 {
     [JsonPropertyName("nombreRazon")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -53,26 +64,41 @@ public sealed class RemoteConsultationContraparteDto
 
     [JsonPropertyName("idOtro")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? IdOtro { get; set; }
+    public RemoteConsultationIdOtroDto? IdOtro { get; set; }
+}
+
+public sealed class RemoteConsultationIdOtroDto
+{
+    [JsonPropertyName("codigoPais")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CodigoPais { get; set; }
+
+    [JsonPropertyName("idType")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? IdType { get; set; }
+
+    [JsonPropertyName("id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Id { get; set; }
 }
 
 public sealed class RemoteConsultationFiltroDto
 {
-    [JsonPropertyName("numSerieFactura")]
+    [JsonPropertyName("periodoImputacion")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? NumSerieFactura { get; set; }
+    public RemoteConsultationPeriodoDto? PeriodoImputacion { get; set; }
+
+    [JsonPropertyName("contraparte")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RemoteConsultationPersonaDto? Contraparte { get; set; }
 
     [JsonPropertyName("fechaExpedicionFactura")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RemoteConsultationFechaFiltroDto? FechaExpedicionFactura { get; set; }
 
-    [JsonPropertyName("contraparte")]
+    [JsonPropertyName("numSerieFactura")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public RemoteConsultationContraparteDto? Contraparte { get; set; }
-
-    [JsonPropertyName("periodoImputacion")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public RemoteConsultationPeriodoDto? PeriodoImputacion { get; set; }
+    public string? NumSerieFactura { get; set; }
 
     [JsonPropertyName("refExterna")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -80,7 +106,7 @@ public sealed class RemoteConsultationFiltroDto
 
     [JsonPropertyName("clavePaginacion")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? ClavePaginacion { get; set; }
+    public RemoteConsultationClaveDto? ClavePaginacion { get; set; }
 
     [JsonPropertyName("sistemaInformatico")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -89,13 +115,24 @@ public sealed class RemoteConsultationFiltroDto
 
 public sealed class RemoteConsultationFechaFiltroDto
 {
-    [JsonPropertyName("fechaDesde")]
+    [JsonPropertyName("fechaExpedicionFactura")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? FechaDesde { get; set; }
+    public string? FechaExpedicionFactura { get; set; }
 
-    [JsonPropertyName("fechaHasta")]
+    [JsonPropertyName("rangoFechaExpedicion")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? FechaHasta { get; set; }
+    public RemoteConsultationRangoFechaDto? RangoFechaExpedicion { get; set; }
+}
+
+public sealed class RemoteConsultationRangoFechaDto
+{
+    [JsonPropertyName("desde")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Desde { get; set; }
+
+    [JsonPropertyName("hasta")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Hasta { get; set; }
 }
 
 public sealed class RemoteConsultationPeriodoDto
@@ -109,28 +146,31 @@ public sealed class RemoteConsultationPeriodoDto
     public string? Periodo { get; set; }
 }
 
+public sealed class RemoteConsultationClaveDto
+{
+    [JsonPropertyName("numSerieFactura")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? NumSerieFactura { get; set; }
+}
+
 public sealed class RemoteConsultationSistemaInformaticoDto
 {
-    [JsonPropertyName("nombre")]
+    [JsonPropertyName("nombreSistemaInformatico")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Nombre { get; set; }
+    public string? NombreSistemaInformatico { get; set; }
 
     [JsonPropertyName("version")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Version { get; set; }
-
-    [JsonPropertyName("idioma")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Idioma { get; set; }
 }
 
 public sealed class RemoteConsultationAdditionalDataDto
 {
-    [JsonPropertyName("mostrarNombreEmisor")]
-    public bool MostrarNombreEmisor { get; set; }
+    [JsonPropertyName("mostrarNombreRazonEmisor")]
+    public string MostrarNombreRazonEmisor { get; set; } = "S";
 
     [JsonPropertyName("mostrarSistemaInformatico")]
-    public bool MostrarSistemaInformatico { get; set; }
+    public string MostrarSistemaInformatico { get; set; } = "S";
 }
 
 public sealed class RemoteConsultationContextDto

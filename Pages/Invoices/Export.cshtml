@@ -1,0 +1,34 @@
+@page
+@model Verifactu.Portal.Pages.Invoices.ExportModel
+@{
+    ViewData["Title"] = "Exportar facturas";
+}
+
+<h1 class="mb-4">Exportar facturas en XML</h1>
+<p class="text-muted">Descarga todas las facturas del periodo indicado en un archivo comprimido con su representación XML.</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<form method="post" class="row g-3 mb-4">
+    <div class="col-sm-4 col-md-3">
+        <label asp-for="FechaDesde" class="form-label"></label>
+        <input asp-for="FechaDesde" type="date" class="form-control" />
+        <span asp-validation-for="FechaDesde" class="text-danger"></span>
+    </div>
+    <div class="col-sm-4 col-md-3">
+        <label asp-for="FechaHasta" class="form-label"></label>
+        <input asp-for="FechaHasta" type="date" class="form-control" />
+        <span asp-validation-for="FechaHasta" class="text-danger"></span>
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Descargar exportación</button>
+        <a asp-page="./Index" class="btn btn-outline-secondary">Volver</a>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

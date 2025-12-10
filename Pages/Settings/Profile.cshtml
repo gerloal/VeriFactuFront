@@ -28,3 +28,25 @@
 </div>
 
 <p class="text-muted mt-3">Estos datos son de solo lectura. Contacta con el administrador si necesitas modificarlos.</p>
+
+<div class="card mt-4">
+    <div class="card-body">
+        <h2 class="h5">Datos de la AEAT</h2>
+        @if (Model.RemoteStatus is not null)
+        {
+            <dl class="row mb-0">
+                <dt class="col-sm-4">Razón social</dt>
+                <dd class="col-sm-8">@(Model.RemoteStatus.NombreRazon ?? "-")</dd>
+                <dt class="col-sm-4">NIF certificado</dt>
+                <dd class="col-sm-8">@(Model.RemoteStatus.IdEmisorFactura ?? "-")</dd>
+                <dt class="col-sm-4">Certificado remoto</dt>
+                <dd class="col-sm-8">@(Model.RemoteStatus.RemoteCertificateEnabled ? "Habilitado" : "No habilitado")</dd>
+            </dl>
+        }
+        else
+        {
+            <p class="text-muted mb-0">No se pudo recuperar la información remota del usuario.</p>
+        }
+        <p class="text-muted mb-0 mt-3">Información proveniente de la AEAT. Uso exclusivamente informativo.</p>
+    </div>
+</div>

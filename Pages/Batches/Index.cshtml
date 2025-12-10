@@ -3,12 +3,34 @@
 
 <h1 class="mb-4">Lotes</h1>
 
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link @(Model.ShowHistory ? string.Empty : "active")"
+           asp-page="Index"
+           asp-route-From="@Model.From?.ToString("yyyy-MM-dd")"
+           asp-route-To="@Model.To?.ToString("yyyy-MM-dd")"
+           asp-route-Status="@Model.Status">Pendientes</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(Model.ShowHistory ? "active" : string.Empty)"
+           asp-page="Index"
+           asp-route-history="true"
+           asp-route-From="@Model.From?.ToString("yyyy-MM-dd")"
+           asp-route-To="@Model.To?.ToString("yyyy-MM-dd")"
+           asp-route-Status="@Model.Status">Histórico</a>
+    </li>
+</ul>
+
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
 {
     <div class="alert alert-info">@Model.StatusMessage</div>
 }
 
 <form method="get" class="row g-3 mb-4">
+    @if (Model.ShowHistory)
+    {
+        <input type="hidden" name="history" value="true" />
+    }
     <div class="col-md-3">
         <label asp-for="From" class="form-label">Fecha desde</label>
         <input asp-for="From" class="form-control" type="date" />
@@ -32,7 +54,7 @@
     </div>
 </form>
 
-@if (Model.PagedBatches?.Items?.Any() == true)
+@if (!Model.ShowHistory && Model.PagedBatches?.Items?.Any() == true)
 {
     <div class="table-responsive">
         <table class="table table-striped align-middle">
@@ -69,11 +91,63 @@
     <nav aria-label="Paginación">
         <ul class="pagination">
             <li class="page-item @(Model.HasPreviousPage ? string.Empty : "disabled")">
-                <a class="page-link" asp-page="Index" asp-route-pageNumber="@(Model.PageNumber - 1)" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")" asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-Status="@Model.Status">Anterior</a>
+                <a class="page-link" asp-page="Index" asp-route-pageNumber="@(Model.PageNumber - 1)" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")" asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-Status="@Model.Status" asp-route-history="@(Model.ShowHistory ? "true" : null)">Anterior</a>
             </li>
             <li class="page-item disabled"><span class="page-link">Página @Model.PageNumber de @Model.TotalPages</span></li>
             <li class="page-item @(Model.HasNextPage ? string.Empty : "disabled")">
-                <a class="page-link" asp-page="Index" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")" asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-Status="@Model.Status">Siguiente</a>
+                <a class="page-link" asp-page="Index" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")" asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-Status="@Model.Status" asp-route-history="@(Model.ShowHistory ? "true" : null)">Siguiente</a>
+            </li>
+        </ul>
+    </nav>
+}
+else if (Model.ShowHistory && Model.PagedHistory?.Items?.Any() == true)
+{
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th scope="col">Identificador</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Recibido</th>
+                    <th scope="col">Completado</th>
+                    <th scope="col">Totales</th>
+                    <th scope="col">Correctos</th>
+                    <th scope="col">Fallidos</th>
+                    <th scope="col">Pendientes</th>
+                    <th scope="col">Archivo</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var batch in Model.PagedHistory.Items)
+            {
+                <tr>
+                    <td>@batch.BatchId</td>
+                    <td>@batch.Status</td>
+                    <td>@batch.ReceivedAt.ToLocalTime().ToString("g")</td>
+                    <td>@(batch.CompletedAt.HasValue ? batch.CompletedAt.Value.ToLocalTime().ToString("g") : "-")</td>
+                    <td>@batch.TotalItems</td>
+                    <td>@batch.Completed</td>
+                    <td>@batch.Failed</td>
+                    <td>@batch.Pending</td>
+                    <td>@(string.IsNullOrWhiteSpace(batch.FileName) ? "-" : batch.FileName)</td>
+                    <td>
+                        <a asp-page="Details" asp-route-batchId="@batch.BatchId" class="btn btn-outline-primary btn-sm">Detalles</a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <nav aria-label="Paginación">
+        <ul class="pagination">
+            <li class="page-item @(Model.HasPreviousPage ? string.Empty : "disabled")">
+                <a class="page-link" asp-page="Index" asp-route-pageNumber="@(Model.PageNumber - 1)" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")" asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-Status="@Model.Status" asp-route-history="true">Anterior</a>
+            </li>
+            <li class="page-item disabled"><span class="page-link">Página @Model.PageNumber de @Model.TotalPages</span></li>
+            <li class="page-item @(Model.HasNextPage ? string.Empty : "disabled")">
+                <a class="page-link" asp-page="Index" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-From="@Model.From?.ToString("yyyy-MM-dd")" asp-route-To="@Model.To?.ToString("yyyy-MM-dd")" asp-route-Status="@Model.Status" asp-route-history="true">Siguiente</a>
             </li>
         </ul>
     </nav>
