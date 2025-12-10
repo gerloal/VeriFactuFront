@@ -130,7 +130,7 @@ public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsMo
 
         try
         {
-            var summary = await _apiClient.GetBatchItemResultSummaryAsync(itemId).ConfigureAwait(false);
+            var summary = await _apiClient.GetBatchItemResultSummaryAsync(BatchId, itemId).ConfigureAwait(false);
             if (summary is null)
             {
                 StatusMessage = "No se encontró información para la factura seleccionada.";

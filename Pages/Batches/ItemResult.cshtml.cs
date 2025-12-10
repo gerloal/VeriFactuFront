@@ -37,9 +37,15 @@ public sealed class ItemResultModel(VerifactuApiClient apiClient, ILogger<ItemRe
             return RedirectToRelevantPage();
         }
 
+        if (string.IsNullOrWhiteSpace(BatchId))
+        {
+            StatusMessage = "No se indicó el identificador del lote.";
+            return RedirectToRelevantPage();
+        }
+
         try
         {
-            Result = await _apiClient.GetBatchItemResultSummaryAsync(ItemId).ConfigureAwait(false);
+            Result = await _apiClient.GetBatchItemResultSummaryAsync(BatchId, ItemId).ConfigureAwait(false);
         }
         catch (HttpRequestException ex)
         {

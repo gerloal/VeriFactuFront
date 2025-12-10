@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using Microsoft.AspNetCore.Http;
@@ -137,6 +138,52 @@ public sealed class VerifactuApiClient
         };
     }
 
+    public async Task<BatchHistoryResponseDto> GetBatchHistoryAsync(DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+
+        var query = new Dictionary<string, string?>();
+
+        if (from.HasValue)
+        {
+            var fromUtc = DateTime.SpecifyKind(from.Value, DateTimeKind.Utc);
+            query["from"] = fromUtc.ToString("o", CultureInfo.InvariantCulture);
+        }
+
+        if (to.HasValue)
+        {
+            var toUtc = DateTime.SpecifyKind(to.Value, DateTimeKind.Utc);
+            query["to"] = toUtc.ToString("o", CultureInfo.InvariantCulture);
+        }
+
+        var endpoint = "batches/history";
+        if (query.Count > 0)
+        {
+            endpoint = QueryHelpers.AddQueryString(endpoint, query!);
+        }
+
+        using var message = new HttpRequestMessage(HttpMethod.Get, endpoint);
+        ApplyDefaultHeaders(message);
+
+    #if DEBUG
+        var historyUrl = ResolveRequestUrl(message.RequestUri);
+        var historyApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, historyUrl, historyApiKey, "BATCH HISTORY QUERY").ConfigureAwait(false);
+    #endif
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new BatchHistoryResponseDto();
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<BatchHistoryResponseDto>(SerializerOptions, cancellationToken).ConfigureAwait(false)
+               ?? new BatchHistoryResponseDto();
+    }
+
     public async Task<BatchDetailDto?> GetBatchByIdAsync(string batchId)
     {
         await PrepareClientAsync();
@@ -177,11 +224,21 @@ public sealed class VerifactuApiClient
         await PrepareClientAsync();
         ArgumentNullException.ThrowIfNull(request);
 
-        using var response = await _httpClient.PostAsJsonAsync(
-            "remote/consultas",
-            request,
-            SerializerOptions,
-            cancellationToken).ConfigureAwait(false);
+        var consultationPath = "remote/consultas";
+        using var message = new HttpRequestMessage(HttpMethod.Post, consultationPath)
+        {
+            Content = JsonContent.Create(request, options: SerializerOptions)
+        };
+
+        ApplyDefaultHeaders(message);
+
+    #if DEBUG
+        var consultationUrl = ResolveRequestUrl(message.RequestUri);
+        var consultationApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, consultationUrl, consultationApiKey, "REMOTE CONSULTA AEAT").ConfigureAwait(false);
+    #endif
+
+        using var response = await _httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -228,10 +285,21 @@ public sealed class VerifactuApiClient
             operation = string.IsNullOrWhiteSpace(operationFilter) ? null : operationFilter
         };
 
-        using var response = await _httpClient.PostAsJsonAsync(
-            $"remote/batches/{Uri.EscapeDataString(batchId)}/resume",
-            payload,
-            SerializerOptions).ConfigureAwait(false);
+        var resumePath = $"remote/batches/{Uri.EscapeDataString(batchId)}/resume";
+        using var message = new HttpRequestMessage(HttpMethod.Post, resumePath)
+        {
+            Content = JsonContent.Create(payload, options: SerializerOptions)
+        };
+
+        ApplyDefaultHeaders(message);
+
+    #if DEBUG
+        var resumeUrl = ResolveRequestUrl(message.RequestUri);
+        var resumeApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, resumeUrl, resumeApiKey, "REMOTE BATCH RESUME").ConfigureAwait(false);
+    #endif
+
+        using var response = await _httpClient.SendAsync(message).ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -302,17 +370,31 @@ public sealed class VerifactuApiClient
         }
     }
 
-    public async Task<BatchItemResultSummary?> GetBatchItemResultSummaryAsync(string itemId)
+    public async Task<BatchItemResultSummary?> GetBatchItemResultSummaryAsync(string batchId, string itemId)
     {
         await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(batchId))
+        {
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(batchId));
+        }
+
         if (string.IsNullOrWhiteSpace(itemId))
         {
             return null;
         }
 
-        var path = $"items/{Uri.EscapeDataString(itemId)}/result";
+        var path = $"batches/{Uri.EscapeDataString(batchId)}/items/{Uri.EscapeDataString(itemId)}";
 
-        using var response = await _httpClient.GetAsync(path).ConfigureAwait(false);
+        using var message = new HttpRequestMessage(HttpMethod.Get, path);
+        ApplyDefaultHeaders(message);
+
+    #if DEBUG
+        var itemUrl = ResolveRequestUrl(message.RequestUri);
+        var itemApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, itemUrl, itemApiKey, "BATCH ITEM RESULT").ConfigureAwait(false);
+    #endif
+
+        using var response = await _httpClient.SendAsync(message).ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -614,4 +696,120 @@ public sealed class VerifactuApiClient
         PageSize = pageSize <= 0 ? 50 : pageSize,
         TotalCount = 0
     };
+
+    private void ApplyDefaultHeaders(HttpRequestMessage message)
+    {
+        foreach (var header in _httpClient.DefaultRequestHeaders)
+        {
+            message.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+    }
+
+    private Uri ResolveRequestUrl(Uri? requestUri)
+    {
+        if (requestUri is { IsAbsoluteUri: true })
+        {
+            return requestUri;
+        }
+
+        if (_httpClient.BaseAddress is not null)
+        {
+            return new Uri(_httpClient.BaseAddress, requestUri?.ToString() ?? string.Empty);
+        }
+
+        var relative = requestUri?.ToString() ?? string.Empty;
+        return Uri.TryCreate(relative, UriKind.Absolute, out var absolute)
+            ? absolute
+            : new Uri(new Uri("https://localhost"), relative);
+    }
+
+    private static string? TryGetHeaderValue(HttpHeaders headers, string key)
+    {
+        if (headers.TryGetValues(key, out var values))
+        {
+            return values.FirstOrDefault();
+        }
+
+        return null;
+    }
+
+    private static async Task LogLambdaTestFormatAsync(
+        HttpRequestMessage request,
+        Uri url,
+        string? apiKey,
+        string operationType,
+        bool encodeBodyAsBase64 = false)
+    {
+        Console.WriteLine($"\n🔥 === COPIA {operationType} PARA LAMBDA TEST TOOL ===");
+
+        var pathFromUrl = url.AbsolutePath;
+        var headersJson = new StringBuilder();
+        headersJson.Append("{\n");
+
+        if (request.Content?.Headers is not null)
+        {
+            foreach (var header in request.Content.Headers)
+            {
+                if (header.Key == "Content-Type")
+                {
+                    headersJson.Append($"    \"{header.Key}\": \"{string.Join(", ", header.Value)}\",\n");
+                }
+            }
+        }
+
+        foreach (var header in request.Headers)
+        {
+            headersJson.Append($"    \"{header.Key}\": \"{string.Join(", ", header.Value)}\",\n");
+        }
+
+#if DEBUG
+        headersJson.Append("    \"X-CloudFront-Secret\": \"…\",\n");
+#endif
+
+        if (headersJson.Length > 3)
+        {
+            headersJson.Length -= 2;
+            headersJson.Append("\n");
+        }
+
+        headersJson.Append("  }");
+
+        var requestBodyRaw = request.Content is not null
+            ? await request.Content.ReadAsStringAsync().ConfigureAwait(false)
+            : string.Empty;
+
+        var isBase64 = false;
+        string requestBody;
+
+        if (encodeBodyAsBase64 && !string.IsNullOrEmpty(requestBodyRaw))
+        {
+            requestBody = Convert.ToBase64String(Encoding.UTF8.GetBytes(requestBodyRaw));
+            isBase64 = true;
+        }
+        else
+        {
+            requestBody = requestBodyRaw.Replace("\"", "\\\"");
+        }
+
+        var requestApiKey = apiKey ?? "tu-api-key-aqui";
+
+        var bodyLine = isBase64
+            ? $"  \"isBase64Encoded\": true,\n  \"body\": \"{requestBody}\""
+            : $"  \"body\": \"{requestBody}\"";
+
+        var lambdaTestJson = "{" +
+                             $"\n  \"httpMethod\": \"{request.Method.Method}\"," +
+                             $"\n  \"path\": \"{pathFromUrl}\"," +
+                             $"\n  \"headers\": {headersJson}," +
+                             $"\n{bodyLine}," +
+                             "\n  \"requestContext\": {" +
+                             "\n    \"identity\": {" +
+                             $"\n      \"apiKey\": \"{requestApiKey}\"" +
+                             "\n    }" +
+                             "\n  }" +
+                             "\n}";
+
+        Console.WriteLine(lambdaTestJson);
+        Console.WriteLine($"=== FIN {operationType} LAMBDA TEST TOOL ===\n");
+    }
 }

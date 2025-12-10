@@ -1,61 +1,6 @@
 @page
 @model Verifactu.Portal.Pages.Settings.ApiKeysModel
 
-<h1 class="mb-4">Claves de API</h1>
-
-@if (!string.IsNullOrEmpty(Model.StatusMessage))
-{
-    <div class="alert alert-info">@Model.StatusMessage</div>
-}
-
-<form method="post" asp-page-handler="Create" class="mb-4">
-    <div class="row g-2 align-items-end">
-        <div class="col-sm-8 col-md-6 col-lg-4">
-            <label asp-for="NewApiKeyName" class="form-label">Nombre de la clave</label>
-            <input asp-for="NewApiKeyName" class="form-control" />
-            <span asp-validation-for="NewApiKeyName" class="text-danger"></span>
-        </div>
-        <div class="col-auto">
-            <button type="submit" class="btn btn-primary">Crear nueva API Key</button>
-        </div>
-    </div>
-</form>
-
-@if (Model.ApiKeys?.Any() == true)
-{
-    <div class="table-responsive">
-        <table class="table table-bordered align-middle">
-            <thead>
-                <tr>
-                    <th scope="col">Nombre</th>
-                    <th scope="col">Valor</th>
-                    <th scope="col">Creada</th>
-                    <th scope="col" class="text-end">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-            @foreach (var apiKey in Model.ApiKeys)
-            {
-                <tr>
-                    <td>@apiKey.Name</td>
-                    <td><code>@apiKey.MaskedValue</code></td>
-                    <td>@apiKey.CreatedAt.ToString("g")</td>
-                    <td class="text-end">
-                        <form method="post" asp-page-handler="Delete" asp-route-apiKeyId="@apiKey.Id" class="d-inline">
-                            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('¿Eliminar esta API Key?');">Eliminar</button>
-                        </form>
-                    </td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
-}
-else
-{
-    <div class="alert alert-warning">No hay claves de API configuradas.</div>
-}
-
-@section Scripts {
-    <partial name="_ValidationScriptsPartial" />
-}
+<div class="alert alert-info mt-4">
+    La gestión de API Keys no está disponible en este momento.
+</div>
