@@ -10,10 +10,11 @@ using Verifactu.Portal.Services;
 namespace Verifactu.Portal.Pages.Batches;
 
 [Authorize]
-public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsModel> logger) : PageModel
+public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsModel> logger, ITenantContext tenantContext) : PageModel
 {
     private readonly VerifactuApiClient _apiClient = apiClient;
     private readonly ILogger<DetailsModel> _logger = logger;
+    private readonly ITenantContext _tenantContext = tenantContext;
 
     [BindProperty(SupportsGet = true, Name = "batchId")]
     public string? BatchId { get; set; }
@@ -25,6 +26,8 @@ public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsMo
     public IList<InvoiceDto> PendingInvoices { get; private set; } = new List<InvoiceDto>();
 
     public bool CanUseRemoteCertificate { get; private set; }
+
+    public bool IsVerifactuTenant { get; private set; } = true;
 
     [TempData]
     public string? StatusMessage { get; set; }
@@ -78,14 +81,24 @@ public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsMo
             PendingInvoices = new List<InvoiceDto>();
         }
 
-        try
+        var systemType = await _tenantContext.GetSystemTypeAsync().ConfigureAwait(false);
+        IsVerifactuTenant = systemType.IsVerifactu();
+
+        if (IsVerifactuTenant)
         {
-            var remoteStatus = await _apiClient.GetRemoteUserStatusAsync().ConfigureAwait(false);
-            CanUseRemoteCertificate = remoteStatus.RemoteCertificateEnabled;
+            try
+            {
+                var remoteStatus = await _apiClient.GetRemoteUserStatusAsync().ConfigureAwait(false);
+                CanUseRemoteCertificate = remoteStatus.RemoteCertificateEnabled;
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "No se pudo determinar si el tenant puede usar certificado remoto.");
+                CanUseRemoteCertificate = false;
+            }
         }
-        catch (HttpRequestException ex)
+        else
         {
-            _logger.LogWarning(ex, "No se pudo determinar si el tenant puede usar certificado remoto.");
             CanUseRemoteCertificate = false;
         }
 
@@ -165,6 +178,13 @@ public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsMo
         {
             StatusMessage = "No se pudo identificar el lote.";
             return RedirectToPage("Index");
+        }
+
+        var systemType = await _tenantContext.GetSystemTypeAsync().ConfigureAwait(false);
+        if (!systemType.IsVerifactu())
+        {
+            StatusMessage = "Este tenant está configurado como \"NOVERIFACTU\". Los lotes no se envían a la AEAT.";
+            return RedirectToPage(new { batchId = BatchId });
         }
 
         try

@@ -711,14 +711,14 @@ public sealed class VerifactuApiClient
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<ProfileDto> GetProfileAsync()
+    public async Task<ProfileDto> GetProfileAsync(CancellationToken cancellationToken = default)
     {
         await PrepareClientAsync();
-        using var response = await _httpClient.GetAsync("settings/profile").ConfigureAwait(false);
+        using var response = await _httpClient.GetAsync("settings/profile", cancellationToken).ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();
 
-        var profile = await response.Content.ReadFromJsonAsync<ProfileDto>(SerializerOptions).ConfigureAwait(false);
+        var profile = await response.Content.ReadFromJsonAsync<ProfileDto>(SerializerOptions, cancellationToken).ConfigureAwait(false);
         if (profile is null)
         {
             throw new InvalidOperationException("No se pudo recuperar el perfil del inquilino actual.");

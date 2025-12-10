@@ -1,22 +1,39 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Verifactu.Portal.Models;
 
 public sealed class ProfileDto
 {
     [Required]
-    public required string TenantId { get; init; }
+    public string TenantId { get; init; } = string.Empty;
 
     [Required]
     [Display(Name = "Razón social")]
-    public required string CompanyName { get; set; }
+    public string CompanyName { get; set; } = string.Empty;
 
     [Required]
     [Display(Name = "NIF")]
-    public required string Nif { get; set; }
+    public string Nif { get; set; } = string.Empty;
 
     [Required]
     [EmailAddress]
     [Display(Name = "Correo electrónico")]
-    public required string Email { get; set; }
+    public string Email { get; set; } = string.Empty;
+
+    [Display(Name = "Tipo de sistema")]
+    [JsonPropertyName("tipoSistema")]
+    public string? TipoSistema { get; init; }
+
+    [JsonPropertyName("usaCertificadoRemotoVerifactu")]
+    public bool UsaCertificadoRemotoVerifactu { get; init; }
+
+    [JsonPropertyName("idEmisorFactura")]
+    public string? IdEmisorFactura { get; init; }
+
+    [JsonPropertyName("nombreRazon")]
+    public string? NombreRazon { get; init; }
+
+    [JsonIgnore]
+    public TenantSystemType SystemType => TenantSystemTypeExtensions.FromValue(TipoSistema);
 }

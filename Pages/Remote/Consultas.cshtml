@@ -11,7 +11,11 @@
     <div class="alert alert-warning">@Model.ErrorMessage</div>
 }
 
-@if (!Model.CanUseRemoteCertificate)
+@if (!Model.RemoteFeatureEnabled)
+{
+    <div class="alert alert-info">Las consultas AEAT no están disponibles para este tenant.</div>
+}
+else if (!Model.CanUseRemoteCertificate)
 {
     <div class="alert alert-info">Para usar esta funcionalidad tu usuario debe tener habilitado el certificado remoto.</div>
 }

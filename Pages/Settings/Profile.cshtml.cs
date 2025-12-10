@@ -22,15 +22,18 @@ public sealed class ProfileModel(VerifactuApiClient apiClient, ILogger<ProfileMo
         Email = string.Empty
     };
 
-    public RemoteUserStatusDto? RemoteStatus { get; private set; }
-
     public string? StatusMessage { get; private set; }
+
+    public TenantSystemType SystemType { get; private set; } = TenantSystemType.Unknown;
+
+    public bool UsesVerifactu => SystemType.IsVerifactu();
 
     public async Task OnGetAsync()
     {
         try
         {
             EditableProfile = await _apiClient.GetProfileAsync();
+            SystemType = EditableProfile.SystemType;
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
         {
@@ -45,15 +48,6 @@ public sealed class ProfileModel(VerifactuApiClient apiClient, ILogger<ProfileMo
         catch (NotImplementedException)
         {
             _logger.LogWarning("GetProfileAsync is not implemented yet.");
-        }
-
-        try
-        {
-            RemoteStatus = await _apiClient.GetRemoteUserStatusAsync().ConfigureAwait(false);
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogWarning(ex, "No se pudo recuperar la información remota del usuario.");
         }
     }
 }

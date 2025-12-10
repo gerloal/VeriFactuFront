@@ -184,6 +184,7 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddScoped<IAccessTokenProvider, HttpContextAccessTokenProvider>();
 builder.Services.AddSingleton<IQrCodeRenderer, QrCodeRenderer>();
+builder.Services.AddScoped<ITenantContext, TenantContext>();
 
 builder.Services.AddHttpClient<VerifactuApiClient>((provider, client) =>
 {

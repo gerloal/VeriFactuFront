@@ -25,6 +25,10 @@
         <label asp-for="EditableProfile.Nif" class="form-label">NIF</label>
         <input asp-for="EditableProfile.Nif" class="form-control" readonly />
     </div>
+    <div class="col-md-6">
+        <label class="form-label">Tipo de sistema</label>
+        <input class="form-control" value="@Model.EditableProfile.SystemType.ToDisplayName()" readonly />
+    </div>
 </div>
 
 <p class="text-muted mt-3">Estos datos son de solo lectura. Contacta con el administrador si necesitas modificarlos.</p>
@@ -32,20 +36,20 @@
 <div class="card mt-4">
     <div class="card-body">
         <h2 class="h5">Datos de la AEAT</h2>
-        @if (Model.RemoteStatus is not null)
+        @if (!Model.UsesVerifactu)
         {
-            <dl class="row mb-0">
-                <dt class="col-sm-4">Razón social</dt>
-                <dd class="col-sm-8">@(Model.RemoteStatus.NombreRazon ?? "-")</dd>
-                <dt class="col-sm-4">NIF certificado</dt>
-                <dd class="col-sm-8">@(Model.RemoteStatus.IdEmisorFactura ?? "-")</dd>
-                <dt class="col-sm-4">Certificado remoto</dt>
-                <dd class="col-sm-8">@(Model.RemoteStatus.RemoteCertificateEnabled ? "Habilitado" : "No habilitado")</dd>
-            </dl>
+            <p class="text-muted mb-0">Este tenant está configurado como "NOVERIFACTU". Las comunicaciones con la AEAT no se realizan desde este portal.</p>
         }
         else
         {
-            <p class="text-muted mb-0">No se pudo recuperar la información remota del usuario.</p>
+            <dl class="row mb-0">
+                <dt class="col-sm-4">Razón social</dt>
+                <dd class="col-sm-8">@(Model.EditableProfile.NombreRazon ?? "-")</dd>
+                <dt class="col-sm-4">NIF certificado</dt>
+                <dd class="col-sm-8">@(Model.EditableProfile.IdEmisorFactura ?? "-")</dd>
+                <dt class="col-sm-4">Certificado remoto</dt>
+                <dd class="col-sm-8">@(Model.EditableProfile.UsaCertificadoRemotoVerifactu ? "Habilitado" : "No habilitado")</dd>
+            </dl>
         }
         <p class="text-muted mb-0 mt-3">Información proveniente de la AEAT. Uso exclusivamente informativo.</p>
     </div>

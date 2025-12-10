@@ -23,14 +23,16 @@ public sealed class ConsultasModel : PageModel
 {
     private readonly VerifactuApiClient _apiClient;
     private readonly ILogger<ConsultasModel> _logger;
+    private readonly ITenantContext _tenantContext;
     private readonly VerifactuApiOptions _options;
     private RemoteUserStatusDto? _remoteStatus;
 
-    public ConsultasModel(VerifactuApiClient apiClient, ILogger<ConsultasModel> logger, IOptions<VerifactuApiOptions> options)
+    public ConsultasModel(VerifactuApiClient apiClient, ILogger<ConsultasModel> logger, IOptions<VerifactuApiOptions> options, ITenantContext tenantContext)
     {
         _apiClient = apiClient;
         _logger = logger;
         _options = options.Value;
+        _tenantContext = tenantContext;
     }
 
     [BindProperty]
@@ -52,6 +54,8 @@ public sealed class ConsultasModel : PageModel
 
     public string? RemoteClientNombreRazon { get; private set; }
 
+    public bool RemoteFeatureEnabled { get; private set; } = true;
+
     public async Task<IActionResult> OnGetAsync()
     {
         await InitializeRemoteStatusAsync().ConfigureAwait(false);
@@ -63,6 +67,11 @@ public sealed class ConsultasModel : PageModel
     {
         await InitializeRemoteStatusAsync().ConfigureAwait(false);
         EnsureDefaultPeriod();
+
+        if (!RemoteFeatureEnabled)
+        {
+            return Page();
+        }
 
         if (!CanUseRemoteCertificate)
         {
@@ -145,6 +154,24 @@ public sealed class ConsultasModel : PageModel
 
     private async Task InitializeRemoteStatusAsync()
     {
+        var systemType = await _tenantContext.GetSystemTypeAsync().ConfigureAwait(false);
+        if (!systemType.IsVerifactu())
+        {
+            RemoteFeatureEnabled = false;
+            CanUseRemoteCertificate = false;
+            _remoteStatus = null;
+            RemoteClientNif = null;
+            RemoteClientNombreRazon = null;
+            if (string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                ErrorMessage = "Este tenant está configurado como \"NOVERIFACTU\". Las consultas a la AEAT no están disponibles.";
+            }
+
+            return;
+        }
+
+        RemoteFeatureEnabled = true;
+
         try
         {
             _remoteStatus = await _apiClient.GetRemoteUserStatusAsync().ConfigureAwait(false);
