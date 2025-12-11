@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -48,7 +49,7 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
 
         if (!ModelState.IsValid)
         {
-            return Page();
+            return BuildValidationErrorResult();
         }
 
         var from = FechaDesde!.Value.Date;
@@ -66,8 +67,7 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
             var exportResult = await _apiClient.DownloadInvoicesXmlAsync(from, to).ConfigureAwait(false);
             if (exportResult is null || exportResult.Content.Length == 0)
             {
-                ErrorMessage = "No se encontraron facturas para el periodo indicado.";
-                return Page();
+                return BuildErrorResult("No se encontraron facturas para el periodo indicado.");
             }
 
             return File(exportResult.Content, exportResult.ContentType, exportResult.FileName);
@@ -75,8 +75,54 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "Error al solicitar la exportación de facturas");
-            ErrorMessage = "No se pudo generar la exportación. Inténtalo de nuevo más tarde.";
-            return Page();
+            return BuildErrorResult("No se pudo generar la exportación. Inténtalo de nuevo más tarde.");
         }
+    }
+
+    private IActionResult BuildValidationErrorResult()
+    {
+        if (IsAjaxRequest())
+        {
+            var messages = ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => (e.ErrorMessage ?? string.Empty).Trim())
+                .Where(m => !string.IsNullOrWhiteSpace(m))
+                .ToList();
+
+            var message = messages.Count > 0
+                ? string.Join(" ", messages)
+                : "Debes corregir los errores del formulario.";
+
+            return BadRequest(new { message });
+        }
+
+        return Page();
+    }
+
+    private IActionResult BuildErrorResult(string message)
+    {
+        ErrorMessage = message;
+
+        if (IsAjaxRequest())
+        {
+            return BadRequest(new { message });
+        }
+
+        return Page();
+    }
+
+    private bool IsAjaxRequest()
+    {
+        if (Request is null)
+        {
+            return false;
+        }
+
+        if (!Request.Headers.TryGetValue("X-Requested-With", out var headerValues))
+        {
+            return false;
+        }
+
+        return string.Equals(headerValues.ToString(), "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
     }
 }

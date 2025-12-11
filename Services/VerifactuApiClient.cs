@@ -650,13 +650,22 @@ public sealed class VerifactuApiClient
 
         response.EnsureSuccessStatusCode();
 
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/zip";
-        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
-                   ?? response.Content.Headers.ContentDisposition?.FileName
-                   ?? $"facturas-{normalizedFrom:yyyyMMdd}-{normalizedTo:yyyyMMdd}.zip";
+        var rawBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        var headerContentType = response.Content.Headers.ContentType?.MediaType;
+        var headerFileName = response.Content.Headers.ContentDisposition?.FileNameStar
+                           ?? response.Content.Headers.ContentDisposition?.FileName;
 
-        return new InvoiceExportResult(bytes, contentType, fileName.Trim('"'));
+        if (IsLikelyBase64OrJson(rawBytes))
+        {
+            var textPayload = Encoding.UTF8.GetString(rawBytes);
+            var decoded = ParseExportPayload(textPayload, headerFileName, headerContentType, normalizedFrom, normalizedTo);
+            return new InvoiceExportResult(decoded.Content, decoded.ContentType, decoded.FileName);
+        }
+
+        var fallbackFileName = headerFileName ?? $"facturas-{normalizedFrom:yyyyMMdd}-{normalizedTo:yyyyMMdd}.zip";
+        var fallbackContentType = string.IsNullOrWhiteSpace(headerContentType) ? "application/zip" : headerContentType;
+
+        return new InvoiceExportResult(rawBytes, fallbackContentType, fallbackFileName.Trim('"'));
     }
 
     public async Task<IList<ApiKeyDto>> GetApiKeysAsync()
@@ -735,6 +744,127 @@ public sealed class VerifactuApiClient
         using var response = await _httpClient.PutAsJsonAsync("settings/profile", profile, SerializerOptions).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
+
+    private static bool IsLikelyBase64OrJson(ReadOnlySpan<byte> data)
+    {
+        if (data.IsEmpty)
+        {
+            return false;
+        }
+
+        var firstChar = (char)data[0];
+        if (firstChar == '{' || firstChar == '[' || firstChar == '"')
+        {
+            return true;
+        }
+
+        foreach (var b in data)
+        {
+            var c = (char)b;
+
+            if (char.IsWhiteSpace(c))
+            {
+                continue;
+            }
+
+            if (char.IsLetterOrDigit(c) || c == '+' || c == '/' || c == '=')
+            {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static InvoiceExportPayload ParseExportPayload(string payload, string? headerFileName, string? headerContentType, DateTime from, DateTime to)
+    {
+        var sanitized = payload.Trim();
+
+        if (string.IsNullOrWhiteSpace(sanitized))
+        {
+            throw new InvalidOperationException("Empty export payload.");
+        }
+
+        if (sanitized.StartsWith("{", StringComparison.Ordinal))
+        {
+            using var document = JsonDocument.Parse(sanitized);
+            var root = document.RootElement;
+
+            var base64Data = TryGetStringProperty(root, "content")
+                           ?? TryGetStringProperty(root, "data")
+                           ?? TryGetStringProperty(root, "payload")
+                           ?? TryGetStringProperty(root, "zip")
+                           ?? TryGetStringProperty(root, "zipBase64")
+                           ?? (root.ValueKind == JsonValueKind.String ? root.GetString() : null);
+
+            if (string.IsNullOrWhiteSpace(base64Data))
+            {
+                throw new InvalidOperationException("Export payload does not contain Base64 content.");
+            }
+
+            var content = DecodeBase64(base64Data);
+            var resolvedContentType = headerContentType
+                                      ?? TryGetStringProperty(root, "contentType")
+                                      ?? "application/zip";
+
+            var resolvedFileName = headerFileName
+                                   ?? TryGetStringProperty(root, "fileName")
+                                   ?? $"facturas-{from:yyyyMMdd}-{to:yyyyMMdd}.zip";
+
+            return new InvoiceExportPayload(content, resolvedContentType, resolvedFileName.Trim('"'));
+        }
+
+        if (sanitized.StartsWith("\"", StringComparison.Ordinal) && sanitized.EndsWith("\"", StringComparison.Ordinal) && sanitized.Length >= 2)
+        {
+            sanitized = sanitized[1..^1];
+        }
+
+        var decodedBytes = DecodeBase64(sanitized);
+        var contentType = string.IsNullOrWhiteSpace(headerContentType) ? "application/zip" : headerContentType;
+        var fileName = headerFileName ?? $"facturas-{from:yyyyMMdd}-{to:yyyyMMdd}.zip";
+
+        return new InvoiceExportPayload(decodedBytes, contentType, fileName.Trim('"'));
+    }
+
+    private static byte[] DecodeBase64(string value)
+    {
+        var sanitized = value.Replace("\r", string.Empty, StringComparison.Ordinal)
+                             .Replace("\n", string.Empty, StringComparison.Ordinal)
+                             .Trim();
+
+        if (sanitized.Length == 0)
+        {
+            throw new InvalidOperationException("Export payload is empty.");
+        }
+
+        try
+        {
+            return Convert.FromBase64String(sanitized);
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException("Export payload is not valid Base64.", ex);
+        }
+    }
+
+    private static string? TryGetStringProperty(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return null;
+        }
+
+        return property.ValueKind == JsonValueKind.String ? property.GetString() : null;
+    }
+
+    private sealed record InvoiceExportPayload(byte[] Content, string ContentType, string FileName);
 
     private static PagedResult<T> EmptyPage<T>(int page, int pageSize) => new()
     {
