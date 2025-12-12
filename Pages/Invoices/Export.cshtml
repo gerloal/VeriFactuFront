@@ -24,6 +24,32 @@
         <span asp-validation-for="FechaHasta" class="text-danger"></span>
     </div>
     <div class="col-12">
+        <label class="form-label mb-2">Documentos incluidos</label>
+        <div class="d-flex flex-wrap gap-3">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="PreFirma" id="docs-prefirma" name="Docs" checked />
+                <label class="form-check-label" for="docs-prefirma">PreFirma</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="PostFirma" id="docs-postfirma" name="Docs" checked />
+                <label class="form-check-label" for="docs-postfirma">PostFirma</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="Aeat" id="docs-aeat" name="Docs" />
+                <label class="form-check-label" for="docs-aeat">Aeat</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="Qr" id="docs-qr" name="Docs" />
+                <label class="form-check-label" for="docs-qr">Qr</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="all" id="docs-all" />
+                <label class="form-check-label" for="docs-all">Todos</label>
+            </div>
+        </div>
+        <div class="form-text">Por defecto: PreFirma + PostFirma.</div>
+    </div>
+    <div class="col-12">
         <div id="export-status" class="alert alert-info d-none" role="status">
             Generando la exportación, la descarga comenzará en unos instantes.
         </div>
@@ -118,6 +144,23 @@
                 window.URL.revokeObjectURL(url);
             };
 
+            const buildDocsParam = (formData) => {
+                const allCheckbox = document.getElementById('docs-all');
+                if (allCheckbox && allCheckbox.checked) {
+                    return 'all';
+                }
+
+                const docs = formData.getAll('Docs')
+                    .map(v => (v ?? '').toString().trim())
+                    .filter(v => v.length > 0);
+
+                if (docs.length === 0) {
+                    return '';
+                }
+
+                return docs.join(',');
+            };
+
             resetStatus();
 
             form.addEventListener('submit', async (event) => {
@@ -133,6 +176,10 @@
 
                 try {
                     const formData = new FormData(form);
+                    const docs = buildDocsParam(formData);
+                    if (docs) {
+                        formData.set('DocsCsv', docs);
+                    }
                     const response = await fetch(form.action || window.location.href, {
                         method: 'POST',
                         body: formData,

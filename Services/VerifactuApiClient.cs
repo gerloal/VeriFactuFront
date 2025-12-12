@@ -612,7 +612,7 @@ public sealed class VerifactuApiClient
         return await response.Content.ReadFromJsonAsync<InvoiceDocumentResponseDto>(SerializerOptions).ConfigureAwait(false);
     }
 
-    public async Task<InvoiceExportResult?> DownloadInvoicesXmlAsync(DateTime from, DateTime to, CancellationToken cancellationToken = default)
+    public async Task<InvoiceExportResult?> DownloadInvoicesXmlAsync(DateTime from, DateTime to, string? docs = null, CancellationToken cancellationToken = default)
     {
         await PrepareClientAsync();
 
@@ -629,6 +629,11 @@ public sealed class VerifactuApiClient
             ["from"] = normalizedFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ["to"] = normalizedTo.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
         };
+
+        if (!string.IsNullOrWhiteSpace(docs))
+        {
+            query["docs"] = docs;
+        }
 
         var endpoint = QueryHelpers.AddQueryString("facturas/export", query!);
 

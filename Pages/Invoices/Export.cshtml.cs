@@ -26,6 +26,12 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
     [DataType(DataType.Date)]
     public DateTime? FechaHasta { get; set; }
 
+    [BindProperty]
+    public string[]? Docs { get; set; }
+
+    [BindProperty]
+    public string? DocsCsv { get; set; }
+
     public string? ErrorMessage { get; private set; }
 
     public void OnGet()
@@ -64,7 +70,8 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
 
         try
         {
-            var exportResult = await _apiClient.DownloadInvoicesXmlAsync(from, to).ConfigureAwait(false);
+            var docsCsv = GetDocsCsv();
+            var exportResult = await _apiClient.DownloadInvoicesXmlAsync(from, to, docsCsv).ConfigureAwait(false);
             if (exportResult is null || exportResult.Content.Length == 0)
             {
                 return BuildErrorResult("No se encontraron facturas para el periodo indicado.");
@@ -124,5 +131,25 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
         }
 
         return string.Equals(headerValues.ToString(), "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string? GetDocsCsv()
+    {
+        if (!string.IsNullOrWhiteSpace(DocsCsv))
+        {
+            return DocsCsv.Trim();
+        }
+
+        if (Docs is null || Docs.Length == 0)
+        {
+            return null;
+        }
+
+        var normalized = Docs
+            .Select(d => (d ?? string.Empty).Trim())
+            .Where(d => !string.IsNullOrWhiteSpace(d))
+            .ToArray();
+
+        return normalized.Length == 0 ? null : string.Join(',', normalized);
     }
 }
