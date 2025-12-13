@@ -700,6 +700,12 @@ public sealed class VerifactuApiClient
 
         ApplyDefaultHeaders(message);
 
+    #if DEBUG
+        var jobCreateUrl = ResolveRequestUrl(message.RequestUri);
+        var jobCreateApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, jobCreateUrl, jobCreateApiKey, "FACTURAS EXPORT JOB CREATE").ConfigureAwait(false);
+    #endif
+
         using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 

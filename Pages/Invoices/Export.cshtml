@@ -80,6 +80,7 @@
 
             let currentJobId = null;
             let currentDownloadUrl = null;
+            let currentDownloadUrlExpiresAt = null;
             let pollTimerId = null;
 
             if (!form || !submitButton || !spinner || !buttonText || !statusAlert || !downloadButton || !deleteButton) {
@@ -95,6 +96,7 @@
 
             const resetActions = () => {
                 currentDownloadUrl = null;
+                currentDownloadUrlExpiresAt = null;
                 downloadButton.classList.add('d-none');
                 deleteButton.classList.add('d-none');
             };
@@ -132,13 +134,37 @@
                 buttonText.textContent = defaultButtonText;
             };
 
+            const triggerUrlDownload = (url) => {
+                const link = document.createElement('a');
+                link.href = url;
+                link.rel = 'noopener';
+                link.target = '_blank';
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const isExpired = () => {
+                if (!currentDownloadUrlExpiresAt) {
+                    return false;
+                }
+
+                const expiresAt = Date.parse(currentDownloadUrlExpiresAt);
+                if (Number.isNaN(expiresAt)) {
+                    return false;
+                }
+
+                return Date.now() >= (expiresAt - 5000);
+            };
+
             const downloadFromUrl = async () => {
                 if (!currentJobId) {
                     showStatus('No hay ninguna exportación activa.', 'warning');
                     return;
                 }
 
-                if (!currentDownloadUrl) {
+                if (!currentDownloadUrl || isExpired()) {
                     await pollStatusOnce();
                 }
 
@@ -147,7 +173,7 @@
                     return;
                 }
 
-                window.location.assign(currentDownloadUrl);
+                triggerUrlDownload(currentDownloadUrl);
                 showStatus('Descarga iniciada. Si caduca el enlace, vuelve a consultar el estado.', 'success');
             };
 
@@ -253,6 +279,13 @@
                 if (status === 'COMPLETED') {
                     stopPolling();
                     currentDownloadUrl = data.downloadUrl || null;
+                    currentDownloadUrlExpiresAt = data.downloadUrlExpiresAt || null;
+
+                    if (!currentDownloadUrl) {
+                        showStatus('Exportación completada, pero el enlace de descarga aún no está disponible.', 'warning');
+                        startPolling();
+                        return;
+                    }
 
                     let completedMessage = 'Exportación completada.';
                     if (skipped && skipped > 0) {
@@ -362,6 +395,7 @@
                     }
 
                     showStatus('Exportación en curso…', 'info');
+                    await pollStatusOnce();
                     startPolling();
                 } catch (error) {
                     console.error('Error inesperado al generar la exportación de facturas.', error);

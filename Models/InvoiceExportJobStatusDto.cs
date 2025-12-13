@@ -9,6 +9,9 @@ public sealed class InvoiceExportJobStatusDto
     [JsonPropertyName("jobId")]
     public string? JobId { get; init; }
 
+    [JsonPropertyName("statusUrl")]
+    public string? StatusUrl { get; init; }
+
     [JsonPropertyName("status")]
     public string? Status { get; init; }
 

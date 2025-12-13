@@ -49,7 +49,7 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
             var (from, to) = NormalizeDates();
             var docs = GetDocsValue();
             var job = await _apiClient.CreateInvoiceExportJobAsync(from, to, docs).ConfigureAwait(false);
-            return BuildAjaxOk(job);
+            return StatusCode(StatusCodes.Status202Accepted, job);
         }
         catch (InvalidOperationException ex)
         {
