@@ -55,8 +55,10 @@
         </div>
         <button type="submit" class="btn btn-primary" id="export-submit">
             <span id="export-spinner" class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
-            <span id="export-button-text">Descargar exportación</span>
+            <span id="export-button-text">Generar exportación</span>
         </button>
+        <button type="button" class="btn btn-success d-none" id="export-download">Descargar</button>
+        <button type="button" class="btn btn-outline-danger d-none" id="export-delete">Eliminar exportación</button>
         <a asp-page="./Index" class="btn btn-outline-secondary">Volver</a>
     </div>
 </form>
@@ -70,12 +72,32 @@
             const spinner = document.getElementById('export-spinner');
             const buttonText = document.getElementById('export-button-text');
             const statusAlert = document.getElementById('export-status');
-            const defaultButtonText = buttonText ? buttonText.textContent : 'Descargar exportación';
-            const processingMessage = 'Generando la exportación, la descarga comenzará en unos instantes.';
+            const downloadButton = document.getElementById('export-download');
+            const deleteButton = document.getElementById('export-delete');
+            const defaultButtonText = buttonText ? buttonText.textContent : 'Generar exportación';
+            const processingMessage = 'Exportación en curso. Esto puede tardar unos segundos…';
+            const pollingIntervalMs = 3000;
 
-            if (!form || !submitButton || !spinner || !buttonText || !statusAlert) {
+            let currentJobId = null;
+            let currentDownloadUrl = null;
+            let pollTimerId = null;
+
+            if (!form || !submitButton || !spinner || !buttonText || !statusAlert || !downloadButton || !deleteButton) {
                 return;
             }
+
+            const stopPolling = () => {
+                if (pollTimerId) {
+                    window.clearInterval(pollTimerId);
+                    pollTimerId = null;
+                }
+            };
+
+            const resetActions = () => {
+                currentDownloadUrl = null;
+                downloadButton.classList.add('d-none');
+                deleteButton.classList.add('d-none');
+            };
 
             const resetStatus = () => {
                 statusAlert.textContent = '';
@@ -100,7 +122,7 @@
             const setLoadingState = () => {
                 submitButton.disabled = true;
                 spinner.classList.remove('d-none');
-                buttonText.textContent = 'Preparando descarga...';
+                buttonText.textContent = 'Creando exportación...';
                 showStatus(processingMessage, 'info');
             };
 
@@ -110,38 +132,56 @@
                 buttonText.textContent = defaultButtonText;
             };
 
-            const parseFileName = (disposition) => {
-                if (!disposition) {
-                    return null;
+            const downloadFromUrl = async () => {
+                if (!currentJobId) {
+                    showStatus('No hay ninguna exportación activa.', 'warning');
+                    return;
                 }
 
-                const fileNameStarMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
-                if (fileNameStarMatch && fileNameStarMatch[1]) {
-                    try {
-                        return decodeURIComponent(fileNameStarMatch[1]);
-                    } catch (error) {
-                        return fileNameStarMatch[1];
-                    }
+                if (!currentDownloadUrl) {
+                    await pollStatusOnce();
                 }
 
-                const fileNameMatch = /filename="?([^";]+)"?/i.exec(disposition);
-                if (fileNameMatch && fileNameMatch[1]) {
-                    return fileNameMatch[1];
+                if (!currentDownloadUrl) {
+                    showStatus('La exportación aún no está lista para descargar.', 'warning');
+                    return;
                 }
 
-                return null;
+                window.location.assign(currentDownloadUrl);
+                showStatus('Descarga iniciada. Si caduca el enlace, vuelve a consultar el estado.', 'success');
             };
 
-            const triggerDownload = (blob, fileName) => {
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = fileName || 'facturas-export.zip';
-                link.style.display = 'none';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(url);
+            const deleteCurrentJob = async () => {
+                if (!currentJobId) {
+                    resetActions();
+                    return;
+                }
+
+                try {
+                    const formData = new FormData();
+                    formData.set('jobId', currentJobId);
+                    const response = await fetch('?handler=Delete', {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin'
+                    });
+
+                    if (!response.ok) {
+                        showStatus('No se pudo eliminar la exportación.', 'danger');
+                        return;
+                    }
+
+                    stopPolling();
+                    currentJobId = null;
+                    resetActions();
+                    showStatus('Exportación eliminada.', 'success');
+                } catch (error) {
+                    console.error('Error eliminando la exportación.', error);
+                    showStatus('No se pudo eliminar la exportación.', 'danger');
+                }
             };
 
             const buildDocsParam = (formData) => {
@@ -158,10 +198,104 @@
                     return '';
                 }
 
-                return docs.join(',');
+                return docs.join('|');
             };
 
+            const docsAllCheckbox = document.getElementById('docs-all');
+            const docsOptionCheckboxes = Array.from(document.querySelectorAll('input[name="Docs"]'));
+            if (docsAllCheckbox && docsOptionCheckboxes.length > 0) {
+                docsAllCheckbox.addEventListener('change', function () {
+                    if (docsAllCheckbox.checked) {
+                        docsOptionCheckboxes.forEach(cb => cb.checked = true);
+                    }
+                });
+
+                docsOptionCheckboxes.forEach(cb => {
+                    cb.addEventListener('change', function () {
+                        if (!cb.checked) {
+                            docsAllCheckbox.checked = false;
+                        }
+                    });
+                });
+            }
+
             resetStatus();
+            resetActions();
+
+            const pollStatusOnce = async () => {
+                if (!currentJobId) {
+                    return;
+                }
+
+                const statusUrl = `?handler=Status&jobId=${encodeURIComponent(currentJobId)}`;
+                const response = await fetch(statusUrl, {
+                    method: 'GET',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Status request failed');
+                }
+
+                const data = await response.json();
+                const status = (data.status || '').toString().toUpperCase();
+                const message = (data.message || '').toString().trim();
+                const skipped = typeof data.skippedInvoices === 'number' ? data.skippedInvoices : null;
+
+                if (status === 'PENDING' || status === 'RUNNING') {
+                    showStatus(message || 'Exportación en curso…', 'info');
+                    return;
+                }
+
+                if (status === 'COMPLETED') {
+                    stopPolling();
+                    currentDownloadUrl = data.downloadUrl || null;
+
+                    let completedMessage = 'Exportación completada.';
+                    if (skipped && skipped > 0) {
+                        completedMessage += ` (${skipped} facturas omitidas)`;
+                    }
+
+                    showStatus(completedMessage, 'success');
+                    downloadButton.classList.remove('d-none');
+                    deleteButton.classList.remove('d-none');
+                    restoreButton();
+                    return;
+                }
+
+                if (status === 'FAILED') {
+                    stopPolling();
+                    showStatus(message || 'La exportación ha fallado. Prueba a reducir el rango.', 'danger');
+                    restoreButton();
+                    deleteButton.classList.remove('d-none');
+                    return;
+                }
+
+                showStatus(message || 'Estado desconocido de la exportación.', 'warning');
+            };
+
+            const startPolling = () => {
+                stopPolling();
+                pollTimerId = window.setInterval(async () => {
+                    try {
+                        await pollStatusOnce();
+                    } catch (error) {
+                        console.error('Error consultando el estado de la exportación.', error);
+                        showStatus('No se pudo consultar el estado de la exportación.', 'warning');
+                    }
+                }, pollingIntervalMs);
+            };
+
+            downloadButton.addEventListener('click', function () {
+                downloadFromUrl();
+            });
+
+            deleteButton.addEventListener('click', function () {
+                deleteCurrentJob();
+            });
 
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
@@ -173,6 +307,8 @@
 
                 resetStatus();
                 setLoadingState();
+                resetActions();
+                stopPolling();
 
                 try {
                     const formData = new FormData(form);
@@ -180,7 +316,7 @@
                     if (docs) {
                         formData.set('DocsCsv', docs);
                     }
-                    const response = await fetch(form.action || window.location.href, {
+                    const response = await fetch('?handler=Start', {
                         method: 'POST',
                         body: formData,
                         headers: {
@@ -217,26 +353,19 @@
                         return;
                     }
 
-                    const blob = await response.blob();
-                    if (!blob || blob.size === 0) {
-                        showStatus('No se recibieron datos para la exportación.', 'danger');
+                    const data = await response.json();
+                    currentJobId = data.jobId || null;
+                    if (!currentJobId) {
+                        showStatus('No se pudo crear el job de exportación.', 'danger');
+                        restoreButton();
                         return;
                     }
 
-                    let fileName = parseFileName(response.headers.get('Content-Disposition'));
-                    if (!fileName) {
-                        const fromValue = (formData.get('FechaDesde') ?? '').toString().split('T')[0] || 'desde';
-                        const toValue = (formData.get('FechaHasta') ?? '').toString().split('T')[0] || 'hasta';
-                        fileName = `facturas-${fromValue}-${toValue}.zip`;
-                    }
-
-                    triggerDownload(blob, fileName);
-                    showStatus('La descarga se ha iniciado correctamente.', 'success');
-                    window.setTimeout(resetStatus, 4000);
+                    showStatus('Exportación en curso…', 'info');
+                    startPolling();
                 } catch (error) {
                     console.error('Error inesperado al generar la exportación de facturas.', error);
                     showStatus('No se pudo generar la exportación. Inténtalo de nuevo más tarde.', 'danger');
-                } finally {
                     restoreButton();
                 }
             });

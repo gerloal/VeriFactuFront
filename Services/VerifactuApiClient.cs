@@ -673,6 +673,80 @@ public sealed class VerifactuApiClient
         return new InvoiceExportResult(rawBytes, fallbackContentType, fallbackFileName.Trim('"'));
     }
 
+    public async Task<InvoiceExportJobStatusDto> CreateInvoiceExportJobAsync(DateTime? from, DateTime? to, string? docs = null, CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+
+        var payload = new Dictionary<string, object?>();
+        if (from.HasValue)
+        {
+            payload["from"] = from.Value.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        if (to.HasValue)
+        {
+            payload["to"] = to.Value.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        if (!string.IsNullOrWhiteSpace(docs))
+        {
+            payload["docs"] = docs;
+        }
+
+        using var message = new HttpRequestMessage(HttpMethod.Post, "facturas/export/jobs")
+        {
+            Content = JsonContent.Create(payload, options: SerializerOptions)
+        };
+
+        ApplyDefaultHeaders(message);
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var job = await response.Content.ReadFromJsonAsync<InvoiceExportJobStatusDto>(SerializerOptions, cancellationToken).ConfigureAwait(false);
+        return job ?? new InvoiceExportJobStatusDto();
+    }
+
+    public async Task<InvoiceExportJobStatusDto> GetInvoiceExportJobStatusAsync(string jobId, CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(jobId));
+        }
+
+        var path = $"facturas/export/jobs/{Uri.EscapeDataString(jobId)}";
+        using var message = new HttpRequestMessage(HttpMethod.Get, path);
+        ApplyDefaultHeaders(message);
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var job = await response.Content.ReadFromJsonAsync<InvoiceExportJobStatusDto>(SerializerOptions, cancellationToken).ConfigureAwait(false);
+        return job ?? new InvoiceExportJobStatusDto { JobId = jobId };
+    }
+
+    public async Task DeleteInvoiceExportJobAsync(string jobId, CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(jobId));
+        }
+
+        var path = $"facturas/export/jobs/{Uri.EscapeDataString(jobId)}";
+        using var message = new HttpRequestMessage(HttpMethod.Delete, path);
+        ApplyDefaultHeaders(message);
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return;
+        }
+
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<IList<ApiKeyDto>> GetApiKeysAsync()
     {
         await PrepareClientAsync();

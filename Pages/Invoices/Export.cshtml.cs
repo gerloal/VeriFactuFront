@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Verifactu.Portal.Models;
 using Verifactu.Portal.Services;
 
 namespace Verifactu.Portal.Pages.Invoices;
@@ -41,103 +42,106 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
         FechaDesde ??= today.AddDays(-30);
     }
 
-    public async Task<IActionResult> OnPostAsync()
+    public async Task<IActionResult> OnPostStartAsync()
     {
-        if (!FechaDesde.HasValue)
-        {
-            ModelState.AddModelError(nameof(FechaDesde), "Debes seleccionar una fecha de inicio.");
-        }
-
-        if (!FechaHasta.HasValue)
-        {
-            ModelState.AddModelError(nameof(FechaHasta), "Debes seleccionar una fecha de fin.");
-        }
-
-        if (!ModelState.IsValid)
-        {
-            return BuildValidationErrorResult();
-        }
-
-        var from = FechaDesde!.Value.Date;
-        var to = FechaHasta!.Value.Date;
-
-        if (to < from)
-        {
-            (from, to) = (to, from);
-            FechaDesde = from;
-            FechaHasta = to;
-        }
-
         try
         {
-            var docsCsv = GetDocsCsv();
-            var exportResult = await _apiClient.DownloadInvoicesXmlAsync(from, to, docsCsv).ConfigureAwait(false);
-            if (exportResult is null || exportResult.Content.Length == 0)
-            {
-                return BuildErrorResult("No se encontraron facturas para el periodo indicado.");
-            }
-
-            return File(exportResult.Content, exportResult.ContentType, exportResult.FileName);
+            var (from, to) = NormalizeDates();
+            var docs = GetDocsValue();
+            var job = await _apiClient.CreateInvoiceExportJobAsync(from, to, docs).ConfigureAwait(false);
+            return BuildAjaxOk(job);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BuildAjaxError(ex.Message);
         }
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "Error al solicitar la exportación de facturas");
-            return BuildErrorResult("No se pudo generar la exportación. Inténtalo de nuevo más tarde.");
+            return BuildAjaxError("No se pudo generar la exportación. Inténtalo de nuevo más tarde.");
         }
     }
 
-    private IActionResult BuildValidationErrorResult()
+    public async Task<IActionResult> OnGetStatusAsync([FromQuery] string jobId)
     {
-        if (IsAjaxRequest())
+        if (string.IsNullOrWhiteSpace(jobId))
         {
-            var messages = ModelState.Values
-                .SelectMany(v => v.Errors)
-                .Select(e => (e.ErrorMessage ?? string.Empty).Trim())
-                .Where(m => !string.IsNullOrWhiteSpace(m))
-                .ToList();
-
-            var message = messages.Count > 0
-                ? string.Join(" ", messages)
-                : "Debes corregir los errores del formulario.";
-
-            return BadRequest(new { message });
+            return BuildAjaxError("Falta el identificador del job.");
         }
 
-        return Page();
+        try
+        {
+            var job = await _apiClient.GetInvoiceExportJobStatusAsync(jobId).ConfigureAwait(false);
+            return BuildAjaxOk(job);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error al consultar el estado de la exportación de facturas");
+            return BuildAjaxError("No se pudo consultar el estado de la exportación.");
+        }
     }
 
-    private IActionResult BuildErrorResult(string message)
+    public async Task<IActionResult> OnPostDeleteAsync([FromForm] string jobId)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            return BuildAjaxError("Falta el identificador del job.");
+        }
+
+        try
+        {
+            await _apiClient.DeleteInvoiceExportJobAsync(jobId).ConfigureAwait(false);
+            return new JsonResult(new { deleted = true });
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error al borrar la exportación de facturas");
+            return BuildAjaxError("No se pudo eliminar la exportación.");
+        }
+    }
+
+    private IActionResult BuildAjaxOk(InvoiceExportJobStatusDto payload)
+    {
+        return new JsonResult(payload);
+    }
+
+    private IActionResult BuildAjaxError(string message)
     {
         ErrorMessage = message;
-
-        if (IsAjaxRequest())
-        {
-            return BadRequest(new { message });
-        }
-
-        return Page();
+        return BadRequest(new { message });
     }
 
-    private bool IsAjaxRequest()
+    private (DateTime? From, DateTime? To) NormalizeDates()
     {
-        if (Request is null)
+        var from = FechaDesde?.Date;
+        var to = FechaHasta?.Date;
+
+        if (from.HasValue && to.HasValue && to < from)
         {
-            return false;
+            return (to, from);
         }
 
-        if (!Request.Headers.TryGetValue("X-Requested-With", out var headerValues))
-        {
-            return false;
-        }
-
-        return string.Equals(headerValues.ToString(), "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+        return (from, to);
     }
 
-    private string? GetDocsCsv()
+    private string? GetDocsValue()
     {
-        if (!string.IsNullOrWhiteSpace(DocsCsv))
+        var value = string.IsNullOrWhiteSpace(DocsCsv) ? null : DocsCsv.Trim();
+        if (!string.IsNullOrWhiteSpace(value))
         {
-            return DocsCsv.Trim();
+            if (string.Equals(value, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                return "all";
+            }
+
+            var parts = value
+                .Split(new[] { ',', '|' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return parts.Length == 0 ? null : string.Join('|', parts);
         }
 
         if (Docs is null || Docs.Length == 0)
@@ -148,8 +152,9 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
         var normalized = Docs
             .Select(d => (d ?? string.Empty).Trim())
             .Where(d => !string.IsNullOrWhiteSpace(d))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return normalized.Length == 0 ? null : string.Join(',', normalized);
+        return normalized.Length == 0 ? null : string.Join('|', normalized);
     }
 }
