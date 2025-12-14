@@ -62,16 +62,24 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
         }
     }
 
-    public async Task<IActionResult> OnGetStatusAsync([FromQuery] string jobId)
+    public async Task<IActionResult> OnGetStatusAsync([FromQuery] string? jobId, [FromQuery] string? statusUrl)
     {
-        if (string.IsNullOrWhiteSpace(jobId))
+        if (string.IsNullOrWhiteSpace(jobId) && string.IsNullOrWhiteSpace(statusUrl))
         {
             return BuildAjaxError("Falta el identificador del job.");
         }
 
         try
         {
-            var job = await _apiClient.GetInvoiceExportJobStatusAsync(jobId).ConfigureAwait(false);
+            InvoiceExportJobStatusDto job;
+            if (!string.IsNullOrWhiteSpace(statusUrl))
+            {
+                job = await _apiClient.GetInvoiceExportJobStatusByUrlAsync(statusUrl).ConfigureAwait(false);
+            }
+            else
+            {
+                job = await _apiClient.GetInvoiceExportJobStatusAsync(jobId!).ConfigureAwait(false);
+            }
             return BuildAjaxOk(job);
         }
         catch (HttpRequestException ex)
@@ -97,6 +105,25 @@ public sealed class ExportModel(VerifactuApiClient apiClient, ILogger<ExportMode
         {
             _logger.LogError(ex, "Error al borrar la exportación de facturas");
             return BuildAjaxError("No se pudo eliminar la exportación.");
+        }
+    }
+
+    public async Task<IActionResult> OnGetListAsync(
+        [FromQuery] int? pageSize,
+        [FromQuery] string? continuationToken,
+        [FromQuery] bool includeDeleted = false)
+    {
+        try
+        {
+            var result = await _apiClient
+                .ListInvoiceExportJobsAsync(pageSize, continuationToken, includeDeleted)
+                .ConfigureAwait(false);
+            return new JsonResult(result);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error al listar los jobs de exportación de facturas");
+            return BuildAjaxError("No se pudo cargar el listado de exportaciones.");
         }
     }
 

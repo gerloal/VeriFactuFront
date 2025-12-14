@@ -19,6 +19,7 @@ public sealed class InvoiceExportJobStatusDto
     public string? DownloadUrl { get; init; }
 
     [JsonPropertyName("downloadUrlExpiresAt")]
+    [JsonConverter(typeof(UnixEpochDateTimeOffsetConverter))]
     public DateTimeOffset? DownloadUrlExpiresAt { get; init; }
 
     [JsonPropertyName("message")]

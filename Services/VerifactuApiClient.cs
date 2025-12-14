@@ -713,6 +713,128 @@ public sealed class VerifactuApiClient
         return job ?? new InvoiceExportJobStatusDto();
     }
 
+    public async Task<InvoiceExportJobListResponseDto> ListInvoiceExportJobsAsync(
+        int? pageSize = null,
+        string? continuationToken = null,
+        bool includeDeleted = false,
+        CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+
+        var query = new Dictionary<string, string?>();
+        if (pageSize.HasValue && pageSize.Value > 0)
+        {
+            query["pageSize"] = pageSize.Value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (!string.IsNullOrWhiteSpace(continuationToken))
+        {
+            query["continuationToken"] = continuationToken;
+        }
+
+        if (includeDeleted)
+        {
+            query["includeDeleted"] = "true";
+        }
+
+        var endpoint = query.Count > 0
+            ? QueryHelpers.AddQueryString("facturas/export/jobs", query!)
+            : "facturas/export/jobs";
+
+        using var message = new HttpRequestMessage(HttpMethod.Get, endpoint);
+        ApplyDefaultHeaders(message);
+
+#if DEBUG
+        var listUrl = ResolveRequestUrl(message.RequestUri);
+        var listApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, listUrl, listApiKey, "FACTURAS EXPORT JOB LIST").ConfigureAwait(false);
+#endif
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new InvoiceExportJobListResponseDto();
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        return await ReadJsonOrLambdaBodyAsync<InvoiceExportJobListResponseDto>(response, cancellationToken).ConfigureAwait(false)
+               ?? new InvoiceExportJobListResponseDto();
+    }
+
+    private static async Task<T?> ReadJsonOrLambdaBodyAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var rawBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        if (rawBytes.Length == 0)
+        {
+            return default;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(rawBytes, SerializerOptions);
+        }
+        catch (JsonException)
+        {
+            // Some environments return Lambda proxy shape: { statusCode, headers, body, isBase64Encoded }
+            using var doc = JsonDocument.Parse(rawBytes);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw;
+            }
+
+            var statusCode = 0;
+            if (doc.RootElement.TryGetProperty("statusCode", out var statusProp) && statusProp.ValueKind == JsonValueKind.Number)
+            {
+                statusProp.TryGetInt32(out statusCode);
+            }
+
+            if (!doc.RootElement.TryGetProperty("body", out var bodyProp) || bodyProp.ValueKind != JsonValueKind.String)
+            {
+                throw;
+            }
+
+            var body = bodyProp.GetString();
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return default;
+            }
+
+            var isBase64 = doc.RootElement.TryGetProperty("isBase64Encoded", out var base64Prop)
+                           && base64Prop.ValueKind == JsonValueKind.True;
+
+            if (statusCode >= 400)
+            {
+                string? message = null;
+                try
+                {
+                    var errorJson = isBase64 ? Encoding.UTF8.GetString(Convert.FromBase64String(body)) : body;
+                    using var errorDoc = JsonDocument.Parse(errorJson);
+                    if (errorDoc.RootElement.ValueKind == JsonValueKind.Object
+                        && errorDoc.RootElement.TryGetProperty("message", out var msgProp)
+                        && msgProp.ValueKind == JsonValueKind.String)
+                    {
+                        message = msgProp.GetString();
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                throw new HttpRequestException(message ?? $"Backend returned statusCode {statusCode}.");
+            }
+
+            if (isBase64)
+            {
+                var decoded = Convert.FromBase64String(body);
+                return JsonSerializer.Deserialize<T>(decoded, SerializerOptions);
+            }
+
+            return JsonSerializer.Deserialize<T>(body, SerializerOptions);
+        }
+    }
+
     public async Task<InvoiceExportJobStatusDto> GetInvoiceExportJobStatusAsync(string jobId, CancellationToken cancellationToken = default)
     {
         await PrepareClientAsync();
@@ -725,11 +847,56 @@ public sealed class VerifactuApiClient
         using var message = new HttpRequestMessage(HttpMethod.Get, path);
         ApplyDefaultHeaders(message);
 
+    #if DEBUG
+        var jobStatusUrl = ResolveRequestUrl(message.RequestUri);
+        var jobStatusApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, jobStatusUrl, jobStatusApiKey, "FACTURAS EXPORT JOB STATUS").ConfigureAwait(false);
+    #endif
+
         using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        var job = await response.Content.ReadFromJsonAsync<InvoiceExportJobStatusDto>(SerializerOptions, cancellationToken).ConfigureAwait(false);
+        var job = await ReadJsonOrLambdaBodyAsync<InvoiceExportJobStatusDto>(response, cancellationToken).ConfigureAwait(false);
         return job ?? new InvoiceExportJobStatusDto { JobId = jobId };
+    }
+
+    public async Task<InvoiceExportJobStatusDto> GetInvoiceExportJobStatusByUrlAsync(string statusUrl, CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(statusUrl))
+        {
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(statusUrl));
+        }
+
+        if (!Uri.TryCreate(statusUrl, UriKind.RelativeOrAbsolute, out var statusUri))
+        {
+            throw new InvalidOperationException("El statusUrl recibido no es una URI válida.");
+        }
+
+        if (statusUri.IsAbsoluteUri)
+        {
+            var baseHost = _httpClient.BaseAddress?.Host;
+            if (!string.IsNullOrWhiteSpace(baseHost)
+                && !string.Equals(statusUri.Host, baseHost, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("El statusUrl apunta a un host no permitido.");
+            }
+        }
+
+        using var message = new HttpRequestMessage(HttpMethod.Get, statusUri);
+        ApplyDefaultHeaders(message);
+
+    #if DEBUG
+        var jobStatusUrl = ResolveRequestUrl(message.RequestUri);
+        var jobStatusApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, jobStatusUrl, jobStatusApiKey, "FACTURAS EXPORT JOB STATUS (STATUSURL)").ConfigureAwait(false);
+    #endif
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var job = await ReadJsonOrLambdaBodyAsync<InvoiceExportJobStatusDto>(response, cancellationToken).ConfigureAwait(false);
+        return job ?? new InvoiceExportJobStatusDto();
     }
 
     public async Task DeleteInvoiceExportJobAsync(string jobId, CancellationToken cancellationToken = default)
@@ -743,6 +910,12 @@ public sealed class VerifactuApiClient
         var path = $"facturas/export/jobs/{Uri.EscapeDataString(jobId)}";
         using var message = new HttpRequestMessage(HttpMethod.Delete, path);
         ApplyDefaultHeaders(message);
+
+#if DEBUG
+        var jobDeleteUrl = ResolveRequestUrl(message.RequestUri);
+        var jobDeleteApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, jobDeleteUrl, jobDeleteApiKey, "FACTURAS EXPORT JOB DELETE").ConfigureAwait(false);
+#endif
 
         using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotFound)
