@@ -3,6 +3,98 @@
 
 <h1 class="mb-4">Lotes</h1>
 
+@{
+    var tenantIdClaim = User?.FindFirst("tenantId")?.Value ?? User?.FindFirst("custom:tenantId")?.Value ?? string.Empty;
+}
+
+<div class="card mb-4" data-batch-upload-root data-tenant-id="@tenantIdClaim" data-is-noverifactu="@Model.IsNoVerifactuTenant.ToString().ToLowerInvariant()">
+    <div class="card-body">
+        <div class="d-flex justify-content-between flex-wrap gap-3 align-items-center">
+            <div>
+                <h2 class="h5 mb-1">Nuevo lote</h2>
+                <p class="text-muted mb-0">Carga un archivo JSON, CSV o TXT y lánzalo a procesamiento. Puedes firmarlo antes de enviarlo.</p>
+            </div>
+            <span class="badge bg-secondary">Firma local opcional</span>
+        </div>
+        <form method="post"
+              asp-page-handler="Upload"
+              asp-antiforgery="true"
+              id="batch-upload-form"
+              class="mt-3">
+            <input type="hidden" name="tenantId" value="@tenantIdClaim" />
+            <div class="mb-3">
+                <label for="batch-file" class="form-label">Archivo del lote</label>
+                <input type="file" class="form-control" id="batch-file" name="file" accept=".json,.csv,.txt,.zip" required />
+                <div class="form-text">Formatos admitidos: JSON, CSV, TXT o ZIP (máximo 10 MB).</div>
+            </div>
+            <div class="mb-3">
+                <label for="batch-destinatarios" class="form-label">CSV de destinatarios (opcional)</label>
+                <input type="file" class="form-control" id="batch-destinatarios" name="destinatarios" accept=".csv" />
+                <div class="form-text">Añade el CSV si necesitas cargar destinatarios asociados al lote.</div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label for="batch-source" class="form-label">Fuente</label>
+                    <input type="text" class="form-control" id="batch-source" name="source" value="Portal" />
+                </div>
+                <div class="col-md-4">
+                    <label for="batch-line-count" class="form-label">Número de líneas (opcional)</label>
+                    <input type="number" min="0" step="1" class="form-control" id="batch-line-count" name="lineCount" />
+                </div>
+                <div class="col-md-4">
+                    <label for="batch-metadata-notes" class="form-label">Etiqueta / nota</label>
+                    <input type="text" class="form-control" id="batch-metadata-notes" name="notes" maxlength="200" placeholder="Ej: Periodo 2024-Q4" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="batch-metadata-extra" class="form-label">Metadata adicional (JSON opcional)</label>
+                <textarea class="form-control" id="batch-metadata-extra" name="metadataJson" rows="2" placeholder='{"clave":"valor"}'></textarea>
+                <div class="form-text">Puedes añadir pares clave/valor adicionales en formato JSON (se validará antes de enviar).</div>
+            </div>
+            @if (Model.IsNoVerifactuTenant)
+            {
+                <div class="mb-3">
+                    <label class="form-label d-block">Firma</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" id="batch-sign-none" name="signatureMode" value="none" checked>
+                        <label class="form-check-label" for="batch-sign-none">Sin firma (el backend la generará si aplica)</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" id="batch-sign-browser" name="signatureMode" value="browser">
+                        <label class="form-check-label" for="batch-sign-browser">Firmar con certificado instalado en este navegador</label>
+                    </div>
+                    <div class="mt-3 ms-3 d-none" data-cert-selector>
+                        <label for="batch-certificate" class="form-label">Certificado disponible</label>
+                        <div class="input-group">
+                            <select class="form-select" id="batch-certificate" data-cert-select>
+                                <option value="">Selecciona un certificado</option>
+                            </select>
+                            <button class="btn btn-outline-secondary" type="button" data-cert-refresh>Actualizar</button>
+                        </div>
+                        <div class="form-text" data-cert-status>Los certificados se leen del almacén del navegador a través del conector.</div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-secondary">La firma local está deshabilitada para tenants VeriFactu; el control del certificado se gestiona en backend.</div>
+            }
+            <div class="form-check form-switch mb-3">
+                <input type="hidden" name="runImmediately" value="false" />
+                <input class="form-check-input" type="checkbox" id="batch-run-immediately" name="runImmediately" value="true" checked>
+                <label class="form-check-label" for="batch-run-immediately">Lanzar el procesamiento del lote inmediatamente</label>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-3">
+                <button type="submit" class="btn btn-primary" id="batch-upload-submit">
+                    <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true" id="batch-upload-spinner"></span>
+                    <span>Subir lote</span>
+                </button>
+                <div class="small text-muted" data-batch-upload-status></div>
+            </div>
+        </form>
+    </div>
+</div>
+
 <ul class="nav nav-tabs mb-4">
     <li class="nav-item">
         <a class="nav-link @(Model.ShowHistory ? string.Empty : "active")"
@@ -155,4 +247,8 @@ else if (Model.ShowHistory && Model.PagedHistory?.Items?.Any() == true)
 else
 {
     <div class="alert alert-info">No se encontraron lotes con los filtros seleccionados.</div>
+}
+
+@section Scripts {
+    <script src="~/js/batchUpload.js" asp-append-version="true"></script>
 }

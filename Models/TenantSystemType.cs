@@ -37,4 +37,5 @@ public static class TenantSystemTypeExtensions
     }
 
     public static bool IsVerifactu(this TenantSystemType type) => type == TenantSystemType.Verifactu;
+        public static bool IsNoVerifactu(this TenantSystemType type) => type == TenantSystemType.NoVerifactu;
 }

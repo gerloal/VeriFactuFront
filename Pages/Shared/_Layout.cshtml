@@ -1,4 +1,5 @@
 @inject Verifactu.Portal.Services.ITenantContext TenantContext
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @{
     var tenantSystemType = Verifactu.Portal.Models.TenantSystemType.Unknown;
     try
@@ -11,6 +12,9 @@
     }
 
     var isVerifactuTenant = tenantSystemType.IsVerifactu();
+    var isNoVerifactuTenant = tenantSystemType.IsNoVerifactu();
+    var certificateHelpUrl = (Url.Page("/Settings/Profile") ?? "/Settings/Profile") + "#certificados";
+    var enableMockCertificateProvider = HostEnvironment?.IsDevelopment() ?? false;
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -60,11 +64,54 @@
     </header>
 
     <div class="container my-4">
+        <div class="alert alert-warning d-none" role="alert" data-browser-pki-warning>
+            <strong>Firma local no disponible.</strong>
+            <span data-browser-pki-warning-detail>Instala el conector de certificados o revisa la guía.</span>
+            <a class="alert-link" href="@certificateHelpUrl" target="_blank" rel="noopener noreferrer">Ver instrucciones</a>
+        </div>
         <main role="main" class="pb-3">
             @RenderBody()
         </main>
     </div>
 
+    <script>
+        window.__browserPkiHelpUrl = '@certificateHelpUrl';
+        window.__browserPkiEnableMock = @enableMockCertificateProvider.ToString().ToLowerInvariant();
+        window.__isNoVerifactuTenant = @isNoVerifactuTenant.ToString().ToLowerInvariant();
+    </script>
+    <script src="~/js/browserCertificateService.js" asp-append-version="true"></script>
+    <script>
+        (function setupBrowserPkiWarning() {
+            const warning = document.querySelector('[data-browser-pki-warning]');
+            if (!warning) {
+                return;
+            }
+
+            const detail = warning.querySelector('[data-browser-pki-warning-detail]');
+            const showWarning = (message) => {
+                warning.classList.remove('d-none');
+                if (detail && message) {
+                    detail.textContent = message;
+                }
+            };
+
+            window.addEventListener('browser-pki:error', (event) => {
+                const errorMessage = event?.detail?.message || 'No se pudo acceder al certificado.';
+                showWarning(errorMessage);
+            });
+
+            document.addEventListener('DOMContentLoaded', () => {
+                if (!window.browserCertificateService) {
+                    showWarning('Servicio de certificados no inicializado.');
+                    return;
+                }
+
+                window.browserCertificateService.ensureAvailability().catch((error) => {
+                    showWarning(error?.message || 'No se pudo acceder al certificado.');
+                });
+            });
+        })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     @RenderSection("Scripts", required: false)
 </body>

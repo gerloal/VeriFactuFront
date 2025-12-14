@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http.Headers;
@@ -182,6 +183,54 @@ public sealed class VerifactuApiClient
 
         return await response.Content.ReadFromJsonAsync<BatchHistoryResponseDto>(SerializerOptions, cancellationToken).ConfigureAwait(false)
                ?? new BatchHistoryResponseDto();
+    }
+
+    public async Task<BatchUploadResponseDto> IngestBatchAsync(
+        BatchIngestRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.File);
+
+        using var response = await _httpClient.PostAsJsonAsync("ingest", request, SerializerOptions, cancellationToken).ConfigureAwait(false);
+        var rawPayload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var message = string.IsNullOrWhiteSpace(rawPayload)
+                ? $"Batch ingest failed with status code {(int)response.StatusCode}."
+                : rawPayload;
+            throw new HttpRequestException(message);
+        }
+
+        if (string.IsNullOrWhiteSpace(rawPayload))
+        {
+            return new BatchUploadResponseDto
+            {
+                Status = response.StatusCode.ToString(),
+                Message = response.ReasonPhrase
+            };
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<BatchUploadResponseDto>(rawPayload, SerializerOptions);
+            if (parsed is not null)
+            {
+                return parsed;
+            }
+        }
+        catch (JsonException)
+        {
+            // fall through to return raw text as message
+        }
+
+        return new BatchUploadResponseDto
+        {
+            Status = response.StatusCode.ToString(),
+            Message = rawPayload
+        };
     }
 
     public async Task<BatchDetailDto?> GetBatchByIdAsync(string batchId)
@@ -610,6 +659,76 @@ public sealed class VerifactuApiClient
 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<InvoiceDocumentResponseDto>(SerializerOptions).ConfigureAwait(false);
+    }
+
+    public async Task<InvoiceXmlResponseDto?> GetInvoiceXmlAsync(string batchId, string itemId, CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+        if (string.IsNullOrWhiteSpace(batchId))
+        {
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(batchId));
+        }
+
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(itemId));
+        }
+
+        var path = $"batches/{Uri.EscapeDataString(batchId)}/items/{Uri.EscapeDataString(itemId)}/xml";
+        using var message = new HttpRequestMessage(HttpMethod.Get, path);
+        ApplyDefaultHeaders(message);
+
+#if DEBUG
+        var xmlUrl = ResolveRequestUrl(message.RequestUri);
+        var xmlApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, xmlUrl, xmlApiKey, "INVOICE XML DOWNLOAD").ConfigureAwait(false);
+#endif
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await ReadJsonOrLambdaBodyAsync<InvoiceXmlResponseDto>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SubmitSignedInvoiceAsync(SignedInvoiceRequest request, CancellationToken cancellationToken = default)
+    {
+        await PrepareClientAsync();
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (string.IsNullOrWhiteSpace(request.BatchId))
+        {
+            throw new ArgumentException("BatchId is required.", nameof(request));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ItemId))
+        {
+            throw new ArgumentException("ItemId is required.", nameof(request));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.XmlSignedBase64))
+        {
+            throw new ArgumentException("Signed XML payload is required.", nameof(request));
+        }
+
+        using var message = new HttpRequestMessage(HttpMethod.Post, "signed")
+        {
+            Content = JsonContent.Create(request, options: SerializerOptions)
+        };
+
+        ApplyDefaultHeaders(message);
+
+#if DEBUG
+        var signedUrl = ResolveRequestUrl(message.RequestUri);
+        var signedApiKey = TryGetHeaderValue(message.Headers, "X-API-Key");
+        await LogLambdaTestFormatAsync(message, signedUrl, signedApiKey, "INVOICE SIGNED SUBMIT").ConfigureAwait(false);
+#endif
+
+        using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task<InvoiceExportResult?> DownloadInvoicesXmlAsync(DateTime from, DateTime to, string? docs = null, CancellationToken cancellationToken = default)

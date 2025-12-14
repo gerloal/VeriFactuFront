@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Verifactu.Portal.Models;
@@ -28,6 +29,8 @@ public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsMo
     public bool CanUseRemoteCertificate { get; private set; }
 
     public bool IsVerifactuTenant { get; private set; } = true;
+
+    public bool IsNoVerifactuTenant { get; private set; }
 
     [TempData]
     public string? StatusMessage { get; set; }
@@ -83,6 +86,7 @@ public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsMo
 
         var systemType = await _tenantContext.GetSystemTypeAsync().ConfigureAwait(false);
         IsVerifactuTenant = systemType.IsVerifactu();
+        IsNoVerifactuTenant = systemType.IsNoVerifactu();
 
         if (IsVerifactuTenant)
         {
@@ -172,6 +176,49 @@ public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsMo
         }
     }
 
+    public async Task<IActionResult> OnPostDownloadXmlAsync([FromForm] string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(BatchId) || string.IsNullOrWhiteSpace(itemId))
+        {
+            return BuildAjaxError("Falta información del lote o de la factura.", StatusCodes.Status400BadRequest);
+        }
+
+        try
+        {
+            var xmlResponse = await _apiClient.GetInvoiceXmlAsync(BatchId, itemId).ConfigureAwait(false);
+            if (xmlResponse is null)
+            {
+                return BuildAjaxError("No se encontró el XML solicitado.", StatusCodes.Status404NotFound);
+            }
+
+            return new JsonResult(xmlResponse);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error descargando XML de {ItemId} para el lote {BatchId}", itemId, BatchId);
+            return BuildAjaxError("No se pudo descargar el XML. Inténtalo de nuevo más tarde.");
+        }
+    }
+
+    public async Task<IActionResult> OnPostSubmitSignedAsync([FromBody] SignedInvoiceRequest? request)
+    {
+        if (request is null)
+        {
+            return BuildAjaxError("Los datos enviados son incorrectos.");
+        }
+
+        try
+        {
+            await _apiClient.SubmitSignedInvoiceAsync(request).ConfigureAwait(false);
+            return new JsonResult(new { success = true });
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Error enviando la factura firmada para el item {ItemId}", request.ItemId);
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = "No se pudo almacenar la factura firmada. Inténtalo de nuevo más tarde." });
+        }
+    }
+
     public async Task<IActionResult> OnPostResumeAsync()
     {
         if (string.IsNullOrWhiteSpace(BatchId))
@@ -206,5 +253,10 @@ public sealed class DetailsModel(VerifactuApiClient apiClient, ILogger<DetailsMo
         }
 
         return RedirectToPage(new { batchId = BatchId });
+    }
+
+    private IActionResult BuildAjaxError(string message, int statusCode = StatusCodes.Status400BadRequest)
+    {
+        return StatusCode(statusCode, new { message });
     }
 }

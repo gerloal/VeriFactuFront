@@ -1,6 +1,10 @@
 @page "{batchId}"
 @model Verifactu.Portal.Pages.Batches.DetailsModel
 
+@{
+    var tenantIdClaim = User?.FindFirst("tenantId")?.Value ?? User?.FindFirst("custom:tenantId")?.Value ?? string.Empty;
+}
+
 <h1 class="mb-4">Detalle del lote</h1>
 
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
@@ -14,9 +18,32 @@
 }
 else
 {
-    if (!Model.IsVerifactuTenant)
+    if (Model.IsNoVerifactuTenant)
     {
         <div class="alert alert-secondary">Este tenant está configurado como "NOVERIFACTU". Los lotes no se envían a la AEAT.</div>
+    }
+
+    if (Model.IsNoVerifactuTenant)
+    {
+        <div class="card mb-4" data-invoice-signer-panel>
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col">
+                        <label class="form-label mb-1">Certificado para firmar facturas</label>
+                        <div class="input-group">
+                            <select class="form-select" data-invoice-signer-select>
+                                <option value="">Cargando certificados...</option>
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary" data-invoice-signer-refresh>Actualizar</button>
+                        </div>
+                        <div class="form-text" data-invoice-signer-status>Selecciona el certificado que se utilizará para firmar cada factura.</div>
+                    </div>
+                    <div class="col-auto">
+                        <span class="badge bg-info">Firma local</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     }
 
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -112,7 +139,7 @@ else
     <h2 class="h4">Elementos del lote</h2>
     @if (Model.Invoices?.Items?.Any() == true)
     {
-        <div class="table-responsive">
+        <div class="table-responsive" data-invoice-signer-root data-batch-id="@Model.Batch.BatchId" data-tenant-id="@tenantIdClaim">
             <table class="table table-hover align-middle">
                 <thead>
                     <tr>
@@ -124,13 +151,17 @@ else
                         <th scope="col">Código AEAT</th>
                         <th scope="col">Código ACK</th>
                         <th scope="col">Mensaje ACK</th>
+                        <th scope="col">Firma</th>
                         <th scope="col">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                 @foreach (var invoice in Model.Invoices.Items)
                 {
-                    <tr>
+                    <tr data-invoice-row
+                        data-invoice-item-id="@invoice.ItemId"
+                        data-invoice-factura-id="@invoice.FacturaId"
+                        data-invoice-idempotency="@invoice.IdempotencyKey">
                         <td>@invoice.ItemId</td>
                         <td>@(string.IsNullOrWhiteSpace(invoice.FacturaId) ? "-" : invoice.FacturaId)</td>
                         <td>@(string.IsNullOrWhiteSpace(invoice.NumeroSerie) ? "-" : invoice.NumeroSerie)</td>
@@ -140,13 +171,24 @@ else
                         <td>@invoice.AeatAckCode</td>
                         <td>@invoice.AeatAckMessage</td>
                         <td>
-                            <form method="post" class="d-inline"
-                                  asp-page-handler="ViewInvoice"
-                                  asp-route-batchId="@Model.Batch.BatchId"
-                                  asp-route-itemId="@invoice.ItemId"
-                                  asp-route-idempotencyKey="@invoice.IdempotencyKey">
-                                <button type="submit" class="btn btn-sm btn-outline-secondary">Ver</button>
-                            </form>
+                            <span class="badge bg-secondary" data-invoice-sign-badge>Sin firmar</span>
+                            <div class="small text-muted" data-invoice-sign-detail></div>
+                        </td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-2">
+                                <form method="post" class="d-inline"
+                                      asp-page-handler="ViewInvoice"
+                                      asp-route-batchId="@Model.Batch.BatchId"
+                                      asp-route-itemId="@invoice.ItemId"
+                                      asp-route-idempotencyKey="@invoice.IdempotencyKey">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Ver</button>
+                                </form>
+                                @if (Model.IsNoVerifactuTenant)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary" data-invoice-action="download">Descargar XML</button>
+                                    <button type="button" class="btn btn-sm btn-success" data-invoice-action="sign">Firmar y guardar</button>
+                                }
+                            </div>
                         </td>
                     </tr>
                 }
@@ -161,3 +203,7 @@ else
 }
 
 <a asp-page="Index" class="btn btn-secondary mt-3">Volver a lotes</a>
+
+@section Scripts {
+    <script src="~/js/invoiceSigner.js" asp-append-version="true"></script>
+}
